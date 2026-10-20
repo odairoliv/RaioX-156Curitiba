@@ -1,0 +1,9 @@
+[server]
+# A base completa do 156 tem ~120 MB em CSV
+maxUploadSize = 400
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#2a78d6"
