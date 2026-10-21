@@ -78,13 +78,38 @@ def tabela_bairros() -> pd.DataFrame:
 
 
 def _ler_populacao() -> dict:
-    """Lê data/populacao_bairros.csv (opcional). Devolve {chave: população}."""
+    """Lê data/populacao_bairros.csv (opcional). Devolve {chave: população}.
+
+    Linhas começando com "#" são comentários (ex.: a fonte dos dados).
+    """
     if not ARQUIVO_POPULACAO.exists():
         return {}
-    pop = pd.read_csv(ARQUIVO_POPULACAO, sep=";", dtype=str)
+    pop = pd.read_csv(ARQUIVO_POPULACAO, sep=";", dtype=str, comment="#")
     pop["populacao"] = pd.to_numeric(pop["populacao"].str.replace(".", "", regex=False), errors="coerce")
     pop = pop.dropna(subset=["populacao"])
     return dict(zip(pop["bairro"].map(chave_bairro), pop["populacao"]))
+
+
+def fonte_populacao() -> str:
+    """Texto da linha de comentário "# Fonte: ..." do arquivo de população."""
+    if not ARQUIVO_POPULACAO.exists():
+        return "Arquivo de população não encontrado: as taxas são calculadas por km²."
+    with open(ARQUIVO_POPULACAO, encoding="utf-8") as arquivo:
+        for linha in arquivo:
+            if linha.startswith("#"):
+                return linha.lstrip("# ").strip().removeprefix("Fonte:").strip()
+    return "Fonte não informada no arquivo."
+
+
+def salvar_populacao(populacao: dict, fonte: str) -> None:
+    """Grava um novo data/populacao_bairros.csv ({chave: população}) e recarrega a tabela."""
+    nomes = tabela_bairros().set_index("chave")["bairro"]
+    with open(ARQUIVO_POPULACAO, "w", encoding="utf-8", newline="") as arquivo:
+        arquivo.write(f"# Fonte: {fonte}\n")
+        arquivo.write("bairro;populacao\n")
+        for chave, valor in sorted(populacao.items()):
+            arquivo.write(f"{nomes.get(chave, chave)};{int(valor)}\n")
+    tabela_bairros.cache_clear()
 
 
 def usa_populacao() -> bool:

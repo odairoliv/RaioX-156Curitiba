@@ -1,5 +1,4 @@
 """Machine Learning (classificação): este chamado vai atrasar? Treino, avaliação e simulador."""
-import pandas as pd
 import streamlit as st
 
 from src import estado
@@ -70,6 +69,33 @@ else:
     direita.info(f"O {resultado.modelo_nome} não informa a importância das características diretamente. "
                  "Experimente Árvore de Decisão, Random Forest ou Regressão Logística para ver esse gráfico.")
 
+(no_prazo_ok, alarme_falso), (atraso_perdido, atraso_ok) = resultado.detalhes["matriz_confusao"]
+total_teste = no_prazo_ok + alarme_falso + atraso_perdido + atraso_ok
+with st.container(border=True):
+    st.markdown("**Como ler estes resultados**")
+    linhas = [
+        f"O modelo foi testado em **{num(total_teste)} chamados** que ele não viu no treino. "
+        f"Neles, {num(atraso_perdido + atraso_ok)} atrasaram de verdade e {num(no_prazo_ok + alarme_falso)} foram "
+        "resolvidos no prazo.",
+        f"- **Acurácia {pct(m['acuracia'] * 100)}:** de cada 100 chamados, o modelo acertou a resposta de "
+        f"{num(m['acuracia'] * 100)}. Mas atenção: quem \"chuta\" sempre *no prazo* já acerta "
+        f"{pct(m['acuracia_chute'] * 100)}, porque a maioria não atrasa. Por isso a acurácia sozinha engana.",
+        f"- **Recall {pct(m['recall'] * 100)}:** de cada 100 chamados que **atrasaram de verdade**, o modelo "
+        f"conseguiu apontar {num(m['recall'] * 100)}. É a métrica mais útil para a prefeitura: quantos atrasos "
+        "seriam evitados se ela agisse nos alertas.",
+        f"- **Precisão {pct(m['precisao'] * 100)}:** de cada 100 chamados que o modelo **disse** que iam atrasar, "
+        f"{num(m['precisao'] * 100)} atrasaram mesmo; os outros são alarmes falsos.",
+        f"- **F1 {num(m['f1'], 2)}:** resume precisão e recall num número só (0 = péssimo, 1 = perfeito).",
+        "- **Matriz de confusão** (cada quadrado é uma quantidade de chamados do teste): "
+        f"**{num(no_prazo_ok)}** no prazo e previstos no prazo ✅; **{num(atraso_ok)}** atrasados e previstos como "
+        f"atraso ✅; **{num(alarme_falso)}** alarmes falsos (previsto atraso, mas foi no prazo); "
+        f"**{num(atraso_perdido)}** atrasos não detectados.",
+        "- **O que mais pesa:** quanto cada característica contribuiu para as decisões do modelo (soma 100%).",
+        "- **Trocar o parâmetro *Balancear classes*** muda o equilíbrio: com `balanced` o modelo encontra mais "
+        "atrasos (recall maior) à custa de mais alarmes falsos (precisão menor).",
+    ]
+    st.markdown("\n".join(linhas))
+
 # ---------- Simulador ----------
 st.subheader("Simular um chamado novo")
 nomes = estado.indicadores()["bairro"]
@@ -106,6 +132,10 @@ with st.container(border=True):
     if len(historico):
         r2.caption(f"No histórico, {pct(historico.mean() * 100, 0)} dos {num(len(historico))} chamados com esse "
                    "assunto e detalhe atrasaram (em toda a cidade).")
+st.caption(f"**Como ler:** a *chance de atraso* é a probabilidade, calculada pelo modelo treinado, de um chamado com "
+           f"essas características levar mais de {PRAZO_ATRASO_DIAS} dias para ser respondido. Acima de 60% = alta; "
+           "40% a 60% = incerto; abaixo de 40% = deve sair no prazo. Modelos diferentes podem dar chances diferentes "
+           "para o mesmo chamado — compare treinando outro algoritmo.")
 
 with st.expander("Histórico de treinos (salvos em modelos_salvos/)"):
     st.dataframe(ler_historico("classificacao"), hide_index=True, width="stretch")

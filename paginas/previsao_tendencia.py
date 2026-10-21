@@ -66,6 +66,31 @@ esquerda.plotly_chart(g.previsao_vs_real(resultado.detalhes["teste_cidade"],
 direita.plotly_chart(g.barras_simples(resultado.detalhes["erro_por_categoria"], "Erro médio por categoria",
                                       formato=".2f"), width="stretch")
 
+with st.container(border=True):
+    st.markdown("**Como ler estes resultados**")
+    media = resultado.detalhes.get("media_real_teste")
+    proporcao = f" — cerca de {num(m['mae'] / media * 100)}% de uma semana típica" if media else ""
+    ganho = m["ganho_sobre_regra_simples_%"]
+    unidade = ("- **Unidade de previsão:** quantos chamados um bairro terá numa categoria numa semana "
+               "(ex.: *trânsito no Batel na semana de 15/09*).")
+    if media:
+        unidade += f" No teste, uma combinação bairro × categoria teve em média **{num(media, 1)} chamados por semana**."
+    st.markdown("\n".join([
+        unidade,
+        f"- **Erro médio (MAE) = {num(m['mae'], 2)}:** em média, a previsão errou {num(m['mae'], 1)} chamados "
+        f"para mais ou para menos em cada bairro × categoria × semana{proporcao}.",
+        f"- **Regra simples = {num(m['mae_regra_simples'], 2)}:** é o erro de quem só repete a média das últimas 4 "
+        f"semanas. O modelo é **{num(abs(ganho), 1)}% {'melhor' if ganho > 0 else 'pior'}** que essa regra. Um ganho "
+        "pequeno significa que a demanda é estável e o passado recente já explica quase tudo — resultado esperado "
+        "com poucos meses de dados.",
+        f"- **R² = {num(m['r2'], 2)}:** o modelo explica {num(m['r2'] * 100)}% das diferenças entre os valores reais. "
+        "É alto em boa parte porque bairros grandes sempre têm mais chamados que os pequenos.",
+        "- **Gráfico da esquerda:** soma da cidade nas semanas de teste — linha preta é o real, azul é o modelo e "
+        "pontilhada é a regra simples (quedas bruscas costumam ser feriados, como 7 de setembro).",
+        "- **Gráfico da direita:** erro médio por categoria; categorias com mais chamados têm erros maiores em "
+        "números absolutos.",
+    ]))
+
 # ---------- Previsão ----------
 st.subheader("Previsão das próximas semanas")
 serie = estado.serie()
@@ -102,6 +127,10 @@ p1.metric("Média semanal prevista", num(previsto.mean()), f"{num(variacao * 100
 p2.markdown("**Previsão por mês** (meses parciais incluem só as semanas previstas)")
 p2.dataframe(pd.DataFrame({"Mês": mensal.index.strftime("%m/%Y"), "Chamados previstos": mensal.round().astype(int).values}),
              hide_index=True, width="stretch")
+st.caption("**Como ler:** a linha azul é o número real de demandas por semana (só as categorias escolhidas); a linha "
+           "tracejada laranja é a previsão. *Média semanal prevista* compara a média das semanas previstas com a média "
+           "das 4 últimas semanas reais (seta para baixo = queda de demanda, o que é bom). Previsões longas tendem a "
+           "ficar \"retas\": o modelo volta para o nível típico de cada bairro quando não há novidade nos dados.")
 
 # ---------- Tendência por bairro ----------
 st.subheader("Onde a demanda deve crescer")
@@ -117,11 +146,14 @@ tabela.dataframe(tendencia[tendencia["media_recente"] >= 5].sort_values("variaca
                                   "media_prevista": "Média prevista/sem.", "variacao_%": "Variação %"})
                  .style.format({"Média recente/sem.": "{:.1f}", "Média prevista/sem.": "{:.1f}", "Variação %": "{:+.1f}%"}),
                  hide_index=True, width="stretch")
+st.caption("**Como ler:** a cor é a variação entre a média semanal prevista e a média das 4 últimas semanas reais, "
+           "em cada bairro. Vermelho = demanda deve crescer (atenção); azul = deve cair. Valores limitados a ±50%.")
 
 # ---------- Nota projetada ----------
 st.subheader("Nota projetada dos bairros")
-st.caption("A nota é recalculada trocando os chamados atuais pelos previstos, comparando com os bairros de HOJE. "
-           "Infraestrutura, saneamento e atendimento ficam como estão.")
+st.caption("**Como ler:** recalculamos a nota de cada bairro trocando as taxas de chamados atuais pelas taxas "
+           "previstas e comparando com a situação de HOJE dos 75 bairros. Infraestrutura, saneamento e atendimento "
+           "ficam como estão. *Diferença* positiva = o bairro deve melhorar de posição; negativa = deve piorar.")
 contagens = futuro.pivot_table(index="chave", columns="categoria", values="qtd", aggfunc="sum")
 projetadas = notas_projetadas(estado.indicadores(), contagens, horizonte * 7 / 30.44, pesos)
 atuais = estado.notas(pesos)

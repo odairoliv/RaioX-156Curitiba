@@ -25,6 +25,13 @@ col2.metric("Meses de dados", num((fim - inicio).days / 30.44, 1), help=f"De {da
 col3.metric("Bairros", "75")
 col4.metric("Respondidos em até 30 dias", pct((respondidos <= 30).mean() * 100),
             help="Entre os chamados que já têm data de resposta.")
+st.caption(
+    f"**O que são esses números:** cada *chamado* é um registro na Central 156 da prefeitura (telefone, aplicativo, "
+    f"portal ou chat) — pedidos de serviço, reclamações, denúncias, elogios. Desses, {num(len(demandas))} são "
+    "**demandas** (solicitações, reclamações e denúncias), que indicam algo a resolver no bairro. Para comparar "
+    "bairros de tamanhos diferentes, o sistema também usa a **população de cada bairro (IBGE, Censo 2022)**. "
+    "Detalhes em *Metodologia e dados*."
+)
 
 st.divider()
 esquerda, direita = st.columns(2)

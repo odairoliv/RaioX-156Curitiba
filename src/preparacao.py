@@ -133,10 +133,23 @@ def preparar_esaude(bruto: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return df, relatorio
 
 
+def preparar_populacao(bruto: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Prepara um arquivo de população (colunas bairro;populacao). Aceita '13.991' ou '13991'."""
+    relatorio = {"linhas_lidas": len(bruto)}
+    df = _filtrar_bairros_validos(bruto, "bairro", relatorio)
+    df["populacao"] = pd.to_numeric(df["populacao"].astype(str).str.replace(".", "", regex=False)
+                                    .str.strip(), errors="coerce")
+    relatorio["sem_numero"] = int(df["populacao"].isna().sum())
+    df = df.dropna(subset=["populacao"]).drop_duplicates(subset="chave", keep="last")
+    relatorio["linhas_validas"] = len(df)
+    return df[["chave", "populacao"]].reset_index(drop=True), relatorio
+
+
 PREPARADORES = {
     "156": preparar_156,
     "equipamentos": preparar_equipamentos,
     "esaude": preparar_esaude,
+    "populacao": preparar_populacao,
 }
 
 

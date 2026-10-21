@@ -67,17 +67,53 @@ Testes automáticos: `pytest` (leva cerca de 2 minutos).
 `scripts/preparar_dados.py` gera as bases de `data/base/` a partir dos arquivos baixados do portal
 (também remove colunas pessoais do E-Saúde que o app não usa).
 
+### População por bairro
+
+O sistema usa a **população residente de cada bairro** (não só os chamados) para calcular taxas
+**por mil habitantes** — sem isso, bairros grandes como a Cidade Industrial (172.510 moradores) sempre
+pareceriam piores que bairros pequenos como o Riviera (442 moradores).
+
+- **Fonte:** IBGE, Censo Demográfico 2022, tabela SIDRA 9923 (nível territorial *Bairro*), obtida pela
+  [API de agregados do IBGE](https://servicodados.ibge.gov.br/api/docs/agregados?versao=3). Total: 1.773.718 habitantes.
+- **Arquivo:** `data/populacao_bairros.csv` (`bairro;populacao`). A primeira linha (`# Fonte: ...`) registra a origem
+  e é mostrada no app.
+- **Como atualizar:**
+  1. **Pelo app** — página *Enviar dados*: envie um CSV `bairro;populacao` com os 75 bairros (ex.: estimativas do IPPUC).
+  2. **Pelo IBGE** — `python scripts/atualizar_populacao.py` (Censo 2022) ou
+     `python scripts/atualizar_populacao.py <tabela> <ano>` quando houver tabela nova por bairro.
+  3. **À mão** — editando o CSV.
+
 ---
+
+## Indicadores
+
+Definidos em `src/indicadores.py` e descritos (para o app) em `src/dicionario.py`.
+"Demanda" = chamado do tipo Solicitação, Reclamação ou Denúncia (elogios, sugestões e informações não contam).
+
+| Dimensão | Indicador | Como é calculado | Unidade | Melhor quando |
+|---|---|---|---|---|
+| Zeladoria urbana | Chamados de zeladoria (buracos, iluminação, calçadas, drenagem) | demandas da categoria ÷ meses do período ÷ (população ÷ 1.000) | chamados/mês por mil hab. | menor |
+| Trânsito e mobilidade | Chamados de trânsito (estacionamento irregular, semáforos, sinalização, ônibus) | idem | chamados/mês por mil hab. | menor |
+| Limpeza e meio ambiente | Chamados de limpeza (varrição, árvores, poluição, terrenos, animais) | idem | chamados/mês por mil hab. | menor |
+| Segurança e vulnerabilidade | Chamados de segurança (situação de rua, Guarda Municipal, invasões, violência) | idem | chamados/mês por mil hab. | menor |
+| Saúde pública | Chamados de saúde (dengue, vigilância sanitária e de zoonoses, UMS, UPA) | idem | chamados/mês por mil hab. | menor |
+| Atendimento da prefeitura | Tempo típico de resposta | mediana de (data da resposta − data de abertura) | dias | menor |
+| Atendimento da prefeitura | Chamados atrasados | chamados com +30 dias sem resposta ÷ chamados com ao menos 30 dias de idade | % | menor |
+| Infraestrutura disponível | Equipamentos públicos (educação, saúde, segurança, transporte, esporte, cultura, assistência...) | nº de equipamentos ÷ (população ÷ 1.000) | equipamentos por mil hab. | maior |
+| Saneamento e moradia | Saneamento e moradia adequados | média dos % de moradores com água da rede, lixo coletado, esgoto adequado e moradia adequada (E-Saúde, cada morador uma vez, mínimo 30 por bairro) | % | maior |
 
 ## Como a nota funciona
 
-1. Os ~240 assuntos do 156 são agrupados em 5 categorias (`src/categorias.py`): zeladoria urbana,
-   trânsito e mobilidade, limpeza e meio ambiente, segurança e vulnerabilidade, saúde pública.
-2. Para cada bairro: **chamados por mês por mil habitantes** em cada categoria, tempo de resposta e % de
-   chamados atrasados, equipamentos públicos por mil habitantes e % de moradores com saneamento adequado.
-3. Cada indicador vira uma nota de 0 a 10 **comparando os bairros entre si** (nota 8 = melhor que ~80% dos bairros).
-4. A nota final é uma **média ponderada**; os pesos mudam conforme o perfil (*Equilibrado*, *Vou morar*,
-   *Vou visitar*, *Gestão pública*) ou podem ser ajustados manualmente.
+1. Calcula-se cada indicador acima para os 75 bairros.
+2. Cada indicador vira uma nota de 0 a 10 **comparando os bairros entre si**: nota = fração de bairros
+   que estão *piores* × 10 (nota 8 = melhor que ~80% dos bairros). Atendimento = média das notas dos seus 2 indicadores.
+3. A nota final é a **média ponderada** das 8 dimensões; os pesos mudam conforme o perfil (*Equilibrado*,
+   *Vou morar*, *Vou visitar*, *Gestão pública*) ou podem ser ajustados manualmente.
+4. Situação: 🟢 Boa (≥ 6,5), 🟡 Atenção (4 a 6,5), 🔴 Crítica (< 4).
+
+As notas são **relativas** (posição entre os bairros). Por isso o app sempre mostra também o **valor real**
+de cada indicador e a mediana da cidade (Raio-X do bairro, tabela do Mapa e página *Metodologia*, que traz um
+exemplo de cálculo passo a passo com números reais).
 
 **Limitações** (discutidas na página *Metodologia*): o 156 mede quem reclama, bairros centrais recebem
 muita gente de fora, bairros com pouquíssimos moradores têm taxas instáveis e as notas são relativas.
@@ -117,6 +153,7 @@ raio-x-bairros/
 │   ├── bairros.py             # lista oficial, nomes, população, GeoJSON
 │   ├── categorias.py          # assunto do 156 -> categoria
 │   ├── indicadores.py         # indicadores e notas
+│   ├── dicionario.py          # definição em texto de bases, termos e indicadores
 │   ├── graficos.py            # gráficos Plotly
 │   ├── componentes.py         # pedaços de interface reutilizados
 │   ├── estado.py              # dados e modelos da sessão (cache)
@@ -131,7 +168,9 @@ raio-x-bairros/
 │   ├── exemplos/              # arquivos para testar o upload
 │   ├── geo/bairros.geo.json
 │   └── populacao_bairros.csv
-├── scripts/preparar_dados.py
+├── scripts/
+│   ├── preparar_dados.py      # gera data/base/ a partir dos downloads do portal
+│   └── atualizar_populacao.py # baixa a população por bairro da API do IBGE
 └── tests/                     # pytest
 ```
 

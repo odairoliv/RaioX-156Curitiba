@@ -79,6 +79,19 @@ c1.metric("Alertas de crescimento", len(crescimento))
 c2.metric("Bairros em situação crítica", int((notas["situacao"] == "Crítica").sum()))
 c3.metric(f"Chamados parados há +{PRAZO_ATRASO_DIAS} dias", num(len(parados)))
 
+with st.expander("Como cada alerta é definido", expanded=True):
+    st.markdown("\n".join([
+        f"- **Alta em uma categoria:** compara as demandas das **últimas 4 semanas** "
+        f"({inicio_recente:%d/%m} a {data_ref:%d/%m/%Y}) com a média de 4 semanas das **8 semanas anteriores** "
+        f"({inicio_anterior:%d/%m} a {inicio_recente - pd.Timedelta(days=1):%d/%m}). Vira alerta quando a alta é de "
+        f"pelo menos **{alta_minima}%** e o bairro teve pelo menos **{volume_minimo} chamados** nas últimas 4 semanas "
+        f"(ajuste na barra lateral). Prioridade **alta** quando a alta passa de {2 * alta_minima}%.",
+        "- **Nota geral crítica:** nota final abaixo de 4 no perfil escolhido. Prioridade alta abaixo de 3.",
+        f"- **Chamados parados:** demandas ainda *Abertas*, *Em andamento*, *Em avaliação* ou com *Falta de dados* "
+        f"criadas há mais de {PRAZO_ATRASO_DIAS} dias (até {limite:%d/%m/%Y}). Lista os 5 bairros com mais casos.",
+        "- **Ação sugerida:** recomendação padrão para o tipo de problema — serve de ponto de partida para a equipe.",
+    ]))
+
 st.subheader("Lista de alertas")
 if alertas.empty:
     st.success("Nenhum alerta com os critérios atuais.")
@@ -100,6 +113,9 @@ with aba_calor:
     topo = taxas.loc[taxas.sum(axis=1).sort_values(ascending=False).index[:n]]
     st.plotly_chart(g.mapa_de_calor(topo, f"Chamados por mês ({unidade_taxa()}) — bairros com maior demanda",
                                     "Chamados/mês"), width="stretch")
+    st.caption("Cada linha é um bairro e cada coluna uma categoria. O número é quantas demandas daquela categoria o "
+               "bairro registra por mês para cada mil moradores; quanto mais escuro, maior. Mostra os bairros com "
+               "maior soma das 5 categorias — útil para ver *qual* problema puxa a demanda de cada bairro.")
 
 with aba_orgaos:
     respondidos = demandas.dropna(subset=["dias_resposta"])
@@ -116,6 +132,10 @@ with aba_orgaos:
                                      cor="#d03b3b", formato=".1f"), width="stretch")
     st.dataframe(orgaos.style.format({"Chamados": "{:,.0f}", "Mediana de dias": "{:.0f}", "% com atraso": "{:.1f}%",
                                       "Parados": "{:,.0f}"}), width="stretch")
+    st.caption(f"Órgãos com pelo menos 200 demandas. **Chamados:** demandas no período. **Mediana de dias:** tempo "
+               f"típico até a resposta. **% com atraso:** entre as demandas com mais de {PRAZO_ATRASO_DIAS} dias de "
+               f"idade, quantas passaram de {PRAZO_ATRASO_DIAS} dias sem resposta. **Parados:** ainda abertos após "
+               f"{PRAZO_ATRASO_DIAS} dias.")
 
 with aba_ruas:
     categoria = st.selectbox("Categoria", cat.CATEGORIAS_DA_NOTA)
@@ -126,6 +146,8 @@ with aba_ruas:
     ruas.index = [f"{rua} ({bairro})" for rua, bairro in ruas.index]
     st.plotly_chart(g.barras_simples(ruas, f"Ruas com mais demandas de {categoria.lower()}",
                                      cor=g.CORES_CATEGORIAS[categoria]), width="stretch")
+    st.caption("Quantidade total de demandas da categoria registradas em cada rua (com o bairro entre parênteses) no "
+               "período inteiro. Ruas longas que cruzam vários bairros aparecem separadas por bairro.")
 
 with aba_parados:
     st.markdown(f"Chamados ainda **abertos ou em andamento** criados até {limite:%d/%m/%Y}.")

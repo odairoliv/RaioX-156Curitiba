@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from src import estado
+from src.bairros import fonte_populacao, tabela_bairros
 from src.componentes import data_br, num, status_dados_na_barra_lateral
 from src.config import PASTA_EXEMPLOS
 from src.leitura import COLUNAS_OBRIGATORIAS, FORMATOS_ACEITOS, NOMES_TIPOS, ErroDeArquivo
@@ -69,7 +70,12 @@ for tipo, df in ss.bases.items():
     if tipo == "156":
         linha["Período"] = f"{data_br(df['data'].min())} a {data_br(df['data'].max())}"
     linhas.append(linha)
+populacao = tabela_bairros()["populacao"]
+linhas.append({"Base": NOMES_TIPOS["populacao"], "Origem": fonte_populacao(),
+               "Linhas válidas": f"{populacao.notna().sum()} bairros", "Período": f"{num(populacao.sum())} habitantes"})
 st.dataframe(pd.DataFrame(linhas), hide_index=True, width="stretch")
+st.caption("A **população** vale para todo o app (fica em `data/populacao_bairros.csv`). Para trocá-la, envie aqui um "
+           "CSV com as colunas `bairro;populacao` contendo os 75 bairros — ou veja outras formas em *Metodologia e dados*.")
 
 if st.button("Restaurar bases padrão"):
     estado.restaurar_padrao()

@@ -5,8 +5,10 @@ import streamlit as st
 from src import estado
 from src import graficos as g
 from src.categorias import CATEGORIAS_DA_NOTA
-from src.componentes import num, pct, seletor_pesos, situacao_com_icone, status_dados_na_barra_lateral
-from src.indicadores import DIMENSOES, apenas_demandas, pontos_fortes_e_fracos, unidade_taxa
+from src.componentes import num, seletor_pesos, situacao_com_icone, status_dados_na_barra_lateral
+from src.dicionario import (INDICADORES, comparar_com_bairros, explicar, formatar_valor, indicadores_da_dimensao,
+                            tabela_indicadores_do_bairro)
+from src.indicadores import DIMENSOES, apenas_demandas, pontos_fortes_e_fracos
 from src.preparacao import ITENS_SANEAMENTO
 
 pesos = seletor_pesos()
@@ -40,15 +42,28 @@ with st.container(border=True):
               help="Mediana: metade dos chamados é respondida em até este número de dias.")
 
 # ---------- Resumo em linguagem simples ----------
+def _detalhe(nome_dimensao: str) -> str:
+    """'trânsito e mobilidade: 33,85 chamados por mês por mil habitantes (mediana 5,29)'."""
+    chave_dim = next(d.chave for d in DIMENSOES if d.nome == nome_dimensao)
+    indicador = indicadores_da_dimensao(chave_dim)[-1 if chave_dim == "atendimento" else 0]
+    c = comparar_com_bairros(ind, chave, indicador)
+    unidade = "" if indicador.unidade == "%" else f" {indicador.unidade}"
+    return (f"- **{nome_dimensao}** (nota {num(nota[chave_dim], 1)}): {indicador.nome.lower()} = "
+            f"{formatar_valor(indicador, c['valor'])}{unidade}; mediana dos bairros: "
+            f"{formatar_valor(indicador, c['mediana'])}")
+
+
 fortes, fracos = pontos_fortes_e_fracos(nota)
 melhor_que = (notas["nota_final"] < nota["nota_final"]).mean() * 100
 texto = [f"**{nome}** ({info['regional']}) tem nota **{num(nota['nota_final'], 1)}**, "
          f"melhor que cerca de **{num(melhor_que)}%** dos bairros de Curitiba no perfil *{st.session_state.preset_pesos}*."]
 if fortes:
-    texto.append("**Pontos fortes:** " + ", ".join(f"{n.lower()} ({num(v, 1)})" for n, v in fortes) + ".")
+    texto.append("**Pontos fortes** (onde o bairro está melhor que a maioria):\n" +
+                 "\n".join(_detalhe(n) for n, _ in fortes))
 if fracos:
-    texto.append("**Pontos de atenção:** " + ", ".join(f"{n.lower()} ({num(v, 1)})" for n, v in fracos) + ".")
-texto.append(f"Cerca de **{pct(info['pct_atrasados'], 0)}** dos chamados do bairro levaram mais de 30 dias para "
+    texto.append("**Pontos de atenção** (onde o bairro está pior que a maioria):\n" +
+                 "\n".join(_detalhe(n) for n, _ in fracos))
+texto.append(f"De cada 100 chamados do bairro, cerca de **{num(info['pct_atrasados'])}** levaram mais de 30 dias para "
              "ser respondidos.")
 if info["populacao"] < 2000:
     texto.append("⚠️ *Bairro com poucos moradores: as taxas por habitante variam muito e devem ser lidas com cuidado.*")
@@ -66,7 +81,21 @@ comparacao = pd.DataFrame({rotulo: [s.get(d.chave) for d in DIMENSOES] + [s.get(
                           index=[d.nome for d in DIMENSOES] + ["Nota final"])
 comparacao.loc["Nota final", "Média da cidade"] = notas["nota_final"].mean()
 tabela.dataframe(comparacao.style.format("{:.1f}", na_rep="—"), width="stretch")
-tabela.caption("Notas de 0 a 10. Quanto maior, melhor o bairro em relação aos outros.")
+tabela.caption("Notas de 0 a 10. A nota não é uma medida absoluta: mostra a **posição** do bairro entre os 75. "
+               "Nota 8 = melhor que cerca de 80% dos bairros naquela dimensão.")
+
+# ---------- O que está por trás da nota ----------
+st.subheader("O que está por trás da nota")
+st.markdown(f"Os números reais de **{nome}** em cada indicador, comparados com a **mediana** dos bairros "
+            "(metade dos bairros tem valor acima e metade abaixo). A *posição* vai de 1º (melhor) a 75º (pior).")
+st.dataframe(tabela_indicadores_do_bairro(ind, nota, chave), hide_index=True, width="stretch",
+             column_config={"Nota da dimensão": st.column_config.NumberColumn(format="%.1f")})
+with st.expander("O que significa cada indicador?"):
+    for indicador in INDICADORES:
+        st.markdown(f"**{indicador.nome}** — {indicador.o_que_mede}  \n"
+                    f"*Cálculo:* {indicador.como_calcula}. *Fonte:* {indicador.fonte}. "
+                    f"*Melhor quando:* {'maior' if indicador.maior_melhor else 'menor'}.  \n"
+                    f"*Em {nome}:* {explicar(ind, chave, indicador)}")
 
 # ---------- Detalhes ----------
 chamados_bairro = estado.chamados()[estado.chamados()["chave"] == chave]
@@ -81,12 +110,6 @@ with aba_problemas:
     ruas = demandas[demandas["categoria"].isin(CATEGORIAS_DA_NOTA)]["Logradouro"].value_counts()
     ruas = ruas[ruas.index.astype(str).str.strip() != ""].head(10)
     direita.plotly_chart(g.barras_simples(ruas, "Ruas com mais demandas", cor=g.LARANJA), width="stretch")
-    taxas = pd.DataFrame({
-        "Bairro": [info[f"taxa_{d.chave}"] for d in DIMENSOES[:5]],
-        "Média da cidade": [ind[f"taxa_{d.chave}"].median() for d in DIMENSOES[:5]],
-    }, index=[d.nome for d in DIMENSOES[:5]])
-    st.markdown(f"**Chamados por mês ({unidade_taxa()})** — bairro x mediana dos bairros")
-    st.dataframe(taxas.style.format("{:.2f}"), width="stretch")
 
 with aba_evolucao:
     semanal = demandas.groupby(["semana", "categoria"], observed=True).size().rename("qtd").reset_index()
@@ -103,7 +126,7 @@ with aba_infra:
         esquerda, direita = st.columns([2, 3])
         esquerda.metric("Equipamentos públicos no bairro", num(len(do_bairro)),
                         help="Escolas, unidades de saúde, segurança, transporte, esporte, cultura e assistência.")
-        esquerda.metric(f"Por mil habitantes", num(info["taxa_infraestrutura"], 2),
+        esquerda.metric("Por mil habitantes", num(info["taxa_infraestrutura"], 2),
                         delta=f"{num(info['taxa_infraestrutura'] - ind['taxa_infraestrutura'].median(), 2)} vs mediana",
                         delta_color="normal")
         direita.plotly_chart(g.barras_simples(do_bairro["tema"].value_counts(), "Equipamentos por tema"), width="stretch")

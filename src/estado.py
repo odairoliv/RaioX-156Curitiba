@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from src.bairros import salvar_populacao, tabela_bairros
 from src.config import BASES_PADRAO, PASTA_CACHE
 from src.indicadores import calcular_indicadores, calcular_notas
 from src.leitura import NOMES_TIPOS, ler_e_identificar
@@ -88,13 +89,22 @@ def registrar_upload(nome_arquivo: str, conteudo: bytes, adicionar_ao_periodo: b
     if limpo.empty:
         raise ValueError("Nenhuma linha válida depois da limpeza (verifique datas e nomes de bairro).")
 
-    if tipo == "156" and adicionar_ao_periodo:
+    if tipo == "populacao":
+        # A população vale para o app inteiro: substitui o arquivo data/populacao_bairros.csv
+        faltando = set(tabela_bairros()["chave"]) - set(limpo["chave"])
+        if faltando:
+            raise ValueError(f"O arquivo precisa ter os 75 bairros. Faltam {len(faltando)}: "
+                             f"{', '.join(sorted(faltando)[:10])}{'...' if len(faltando) > 10 else ''}")
+        salvar_populacao(dict(zip(limpo["chave"], limpo["populacao"])),
+                         f"Arquivo enviado pelo app ({nome_arquivo}) em {datetime.now():%d/%m/%Y %H:%M}")
+    elif tipo == "156" and adicionar_ao_periodo:
         ss.bases[tipo] = juntar_156(ss.bases[tipo], limpo)
         ss.origens[tipo] += f" + {nome_arquivo}"
     else:
         ss.bases[tipo] = limpo
         ss.origens[tipo] = f"Arquivo enviado: {nome_arquivo}"
-    ss.relatorios[tipo] = relatorio
+    if tipo != "populacao":
+        ss.relatorios[tipo] = relatorio
     ss.versao_dados = _nova_versao()
 
     resumo = {"arquivo": nome_arquivo, "tipo": NOMES_TIPOS[tipo], "tipo_chave": tipo,

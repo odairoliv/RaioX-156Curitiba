@@ -105,6 +105,7 @@ def treinar_previsao(serie: pd.DataFrame, modelo_nome: str, parametros: dict, ve
         metricas=metricas, n_registros=len(dados), versao_dados=versao_dados,
         periodo=(serie["semana"].min(), serie["semana"].max() + pd.Timedelta(days=6)),
         detalhes={"teste_cidade": cidade, "semanas_teste": semanas_teste,
+                  "media_real_teste": float(teste["qtd"].mean()), "linhas_teste": len(teste),
                   "erro_por_categoria": teste.assign(erro=(teste["qtd"] - teste["previsto"]).abs())
                   .groupby("categoria")["erro"].mean().sort_values(ascending=False)},
     )

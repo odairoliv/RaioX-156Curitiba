@@ -41,15 +41,20 @@ def _ajustar(fig: go.Figure, altura: int = 380, legenda_embaixo: bool = True) ->
 
 
 def mapa_bairros(dados: pd.DataFrame, coluna: str, titulo_cor: str, escala=None, faixa=None,
-                 formato: str = ".1f", altura: int = 560) -> go.Figure:
-    """Mapa coroplético dos 75 bairros. `dados` precisa ter o índice = chave do bairro."""
+                 formato: str = ".1f", altura: int = 560, extras: dict | None = None) -> go.Figure:
+    """Mapa coroplético dos 75 bairros. `dados` precisa ter o índice = chave do bairro.
+
+    `extras` = {coluna: (rótulo, formato)} com informações a mais no balão do mouse.
+    """
     tabela = dados.reset_index().rename(columns={"index": "chave"})
+    extras = extras or {}
     fig = px.choropleth_map(
         tabela, geojson=carregar_geojson(), locations="chave", featureidkey="properties.chave",
         color=coluna, color_continuous_scale=escala or ESCALA_NOTA, range_color=faixa,
-        hover_name="bairro", hover_data={"chave": False, coluna: f":{formato}"},
-        labels={coluna: titulo_cor}, map_style="carto-positron", zoom=9.6, center=CENTRO_CURITIBA,
-        opacity=0.8,
+        hover_name="bairro",
+        hover_data={"chave": False, coluna: f":{formato}"} | {c: f":{f}" for c, (_, f) in extras.items()},
+        labels={coluna: titulo_cor} | {c: rotulo for c, (rotulo, _) in extras.items()},
+        map_style="carto-positron", zoom=9.6, center=CENTRO_CURITIBA, opacity=0.8,
     )
     fig.update_traces(marker_line_width=0.6, marker_line_color="white")
     fig.update_layout(height=altura, margin=dict(l=0, r=0, t=0, b=0),

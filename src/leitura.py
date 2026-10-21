@@ -19,6 +19,7 @@ COLUNAS_OBRIGATORIAS = {
     "156": ["DataCriacao", "Assunto", "Bairro", "Situacao"],
     "equipamentos": ["NM_BAIRRO", "DS_TEMA", "DS_TP_EQUIPAMENTO"],
     "esaude": ["Bairro", "Abastecimento", "Destino Lixo", "Fezes/Urina"],
+    "populacao": ["bairro", "populacao"],
 }
 
 # Colunas opcionais conhecidas (usadas para recuperar o nome original, ex.: no XML)
@@ -29,12 +30,14 @@ COLUNAS_CONHECIDAS = {
                      "NM_BAIRRO", "NM_REGIONAL", "NM_RUA", "NUMERO_EQUI"],
     "esaude": ["Data do Atendimento", "Bairro", "Municício", "Abastecimento", "Destino Lixo",
                "Fezes/Urina", "Tipo de Habitação", "Energia Elétrica", "cod_usuario"],
+    "populacao": ["bairro", "populacao"],
 }
 
 NOMES_TIPOS = {
     "156": "Central 156 — chamados dos cidadãos",
     "equipamentos": "Equipamentos urbanos (escolas, saúde, segurança...)",
     "esaude": "E-Saúde — condições de moradia",
+    "populacao": "População por bairro",
 }
 
 FORMATOS_ACEITOS = ["csv", "json", "xml", "gz"]
@@ -58,6 +61,9 @@ def _decodificar(conteudo: bytes) -> str:
 
 
 def _ler_csv(texto: str) -> pd.DataFrame:
+    # Linhas começando com "#" são comentários (ex.: "# Fonte: IBGE..." no arquivo de população)
+    if texto.startswith("#") or "\n#" in texto:
+        texto = "\n".join(linha for linha in texto.splitlines() if not linha.startswith("#"))
     primeira_linha = texto.split("\n", 1)[0]
     separador = ";" if primeira_linha.count(";") >= primeira_linha.count(",") else ","
     df = pd.read_csv(io.StringIO(texto), sep=separador, dtype=str, keep_default_na=False)
