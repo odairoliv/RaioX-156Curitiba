@@ -20,7 +20,7 @@ resposta depois disso).
 
 | | Hipótese | Como testamos | Resultado (jan–set/2026) |
 |---|---|---|---|
-| **H1** | A **região** onde a pessoa mora muda a chance de atraso | % de atraso por regional e mapa por bairro | **Em parte.** Cajuru 36,8% × Matriz 14,5%. Comparando os mesmos assuntos, a diferença cai de 22 para 12 pontos — mas CIC e Cajuru continuam acima da média |
+| **H1** | A **região** onde a pessoa mora muda a chance de atraso | % de atraso por regional e mapa por bairro; mesmo assunto em regionais diferentes | **Em parte.** Cajuru 36,8% × Matriz 14,5%. Comparando os mesmos assuntos, a diferença cai de 22 para 12 pontos. Mas em serviços de equipes regionais o lugar pesa muito: coleta atrasa 15% na Matriz e 59% na CIC; calçada, 35% no Tatuquara e 76% no Cajuru |
 | **H2** | O **tipo de problema** pesa mais que a região | % por órgão; comparação justa entre regiões; modelo treinado só com *Onde* × só com *O quê* | **Sim.** Entre órgãos a diferença chega a 70 pontos; o tipo de problema explica ~45% da diferença entre regiões; o modelo com *O quê* prevê bem melhor que com *Onde* |
 | **H3** | **Denúncias** demoram mais | % por tipo de chamado | **Sim.** Denúncias 43% × reclamações 16% |
 | **H4** | O **canal** muda a velocidade | % por canal | **Sim, com ressalva.** Chat 20% × Portal 34% (cada canal recebe assuntos diferentes) |
@@ -106,16 +106,24 @@ Se os ajustados continuam diferentes, a região importa mesmo descontando o tipo
 
 - **Entradas:** órgão, assunto, detalhe, tipo, canal, bairro, regional, dia da semana e mês, em *one-hot encoding*.
   Os grupos podem ser ligados/desligados — treinar só com *Onde* ou só com *O quê* testa a H2 diretamente.
-- **Vai atrasar? (classificação):** Árvore de Decisão, KNN, Random Forest, Regressão Logística, Naive Bayes.
-  Métricas: acurácia (comparada ao "chute"), precisão, recall, F1 e matriz de confusão.
-- **Quantos dias? (regressão):** Regressão Linear, Ridge, Árvore de Decisão, KNN, Random Forest, Gradient Boosting,
+- **Vai atrasar? (classificação):** Árvore de Decisão, KNN, Random Forest, Regressão Logística, Naive Bayes e
+  Gradient Boosting. O modelo calcula uma **chance de atraso**; o **limiar** (ajustável na tela) define a partir de
+  que chance o chamado recebe o alerta 🚩 — baixar o limiar encontra mais atrasos, mas gera mais alarmes falsos.
+  Métricas (com nomes simples na tela): atrasos encontrados (recall), alertas certos (precisão), acertos no geral
+  (acurácia, comparada ao "chute") e nota geral (F1), além do resumo "em 100 chamados novos" e exemplos reais.
+- **Quantos dias? (regressão):** Regressão Linear, Ridge, Árvore de Decisão, KNN, Random Forest e Gradient Boosting,
   treinados no logaritmo dos dias. Métricas: erro médio (comparado ao "chute" da mediana), erro mediano,
   % de previsões com erro de até 7 dias e R².
 - **Avaliação:** 75% treino / 25% teste. **O que mais pesa:** importância por permutação (quanto o modelo piora
   quando uma informação é embaralhada) — vale igualmente para todos os algoritmos.
-- **Resultados típicos:** classificação F1 ≈ 0,6; regressão erra em média ~14 dias (contra ~18 do chute), com
-  57% das previsões a até 7 dias do real. O prazo exato depende de fatores fora da base, por isso a regressão é
-  uma estimativa.
+- **Gradient Boosting** recebe as características como categorias (não como colunas 0/1), o que o deixa rápido
+  mesmo com 150 mil chamados. É o melhor nos dois modelos.
+- **Resultados (40 mil chamados, limiar 50%):** Gradient Boosting encontra 78% dos atrasos com 60% dos alertas
+  certos (F1 0,68; 0,70 com 150 mil chamados), contra F1 0,61–0,64 dos demais. Na regressão, erra em média ~13 dias
+  (contra ~18 do chute), com 60% das previsões a até 7 dias do real. O prazo exato depende de fatores fora da
+  base, por isso a regressão é uma estimativa.
+- **Simulador:** mostra a chance de atraso e os dias previstos, trava os campos que o modelo treinado não usa e
+  compara o mesmo pedido nos 75 bairros.
 
 ---
 
@@ -164,7 +172,8 @@ Se os ajustados continuam diferentes, a região importa mesmo descontando o tipo
 
 1. **Início:** a pergunta e as 4 hipóteses.
 2. **Análise:** mapa e regionais (H1) → órgãos e comparação justa (H2) → tipo (H3) e canal (H4) → resumo.
-3. **Previsão – Vai atrasar?:** treinar com todas as características; depois só *Onde* e só *O quê* → comparar F1 (H2).
+3. **Previsão – Vai atrasar?:** treinar o Gradient Boosting; mover o limiar e mostrar a troca entre atrasos
+   encontrados e alarmes falsos; depois treinar só com *Onde* e só com *O quê* → comparar a nota F1 (H2).
 4. **Previsão – Quantos dias?:** treinar e mostrar erro médio × chute; simular um chamado e trocar só o bairro.
 5. **Enviar dados:** enviar `data/exemplos/156_outubro_2026.csv` com re-treino automático e mostrar o período e
    os modelos atualizados.

@@ -105,11 +105,43 @@ def barras_simples(serie: pd.Series, titulo: str, cor: str = AZUL, formato: str 
 
 
 def matriz_confusao(matriz) -> go.Figure:
-    rotulos = ["No prazo", "Atrasou"]
-    fig = px.imshow(matriz, x=[f"Previsto: {r}" for r in rotulos], y=[f"Real: {r}" for r in rotulos],
-                    color_continuous_scale=["#f0efec", AZUL], text_auto=",")
-    fig.update_layout(title="Matriz de confusão (chamados de teste)", coloraxis_showscale=False)
+    """Matriz de confusão com o significado de cada quadrado escrito dentro dele."""
+    (no_prazo_ok, alarme), (perdido, atraso_ok) = matriz
+    numero = lambda v: f"{v:,}".replace(",", ".")  # noqa: E731
+    textos = [[f"✅ {numero(no_prazo_ok)}<br>acertou: no prazo", f"⚠️ {numero(alarme)}<br>alarme falso"],
+              [f"❌ {numero(perdido)}<br>atraso não detectado", f"✅ {numero(atraso_ok)}<br>acertou: atrasou"]]
+    cores = [[0, 1], [1, 0]]  # acertos em azul claro, erros em laranja claro
+    fig = go.Figure(go.Heatmap(
+        z=cores, x=["Modelo disse: no prazo", "Modelo disse: vai atrasar"],
+        y=["Na verdade: no prazo", "Na verdade: atrasou"], text=textos, texttemplate="%{text}",
+        textfont=dict(size=14), colorscale=[[0, "#dceafb"], [1, "#fde3d5"]], showscale=False, hoverinfo="skip",
+        xgap=3, ygap=3,
+    ))
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(title="Acertos e erros nos chamados de teste")
     return _ajustar(fig, altura=340)
+
+
+def curva_limiar(y_real, chance, limiar: float) -> go.Figure:
+    """Como os atrasos encontrados (recall) e os alertas certos (precisão) mudam com o limiar."""
+    limiares = [i / 100 for i in range(5, 96, 5)]
+    recall, precisao = [], []
+    for corte in limiares:
+        alerta = chance >= corte
+        acertos = (alerta & (y_real == 1)).sum()
+        recall.append(acertos / max((y_real == 1).sum(), 1) * 100)
+        precisao.append(acertos / max(alerta.sum(), 1) * 100)
+    eixo = [c * 100 for c in limiares]
+    fig = go.Figure()
+    fig.add_scatter(x=eixo, y=recall, name="Atrasos encontrados (recall)", mode="lines+markers",
+                    line=dict(color=LARANJA, width=2), hovertemplate="Limiar %{x:.0f}%: encontra %{y:.0f}% dos atrasos<extra></extra>")
+    fig.add_scatter(x=eixo, y=precisao, name="Alertas certos (precisão)", mode="lines+markers",
+                    line=dict(color=AZUL, width=2), hovertemplate="Limiar %{x:.0f}%: %{y:.0f}% dos alertas estão certos<extra></extra>")
+    fig.add_vline(x=limiar * 100, line_dash="dot", line_color=CINZA,
+                  annotation_text=f"limiar escolhido: {limiar * 100:.0f}%", annotation_position="top")
+    fig.update_layout(title="O que acontece quando mudamos o limiar", xaxis_title="Limiar: alertar quando a chance "
+                      "de atraso for pelo menos (%)", yaxis_title="%", yaxis_range=[0, 105], hovermode="x unified")
+    return _ajustar(fig, altura=380)
 
 
 def real_vs_previsto(tabela: pd.DataFrame, limite_dias: int = 120, amostra: int = 3000) -> go.Figure:

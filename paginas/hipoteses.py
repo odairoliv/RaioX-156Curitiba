@@ -101,6 +101,25 @@ conclusao(
     None if diferenca_ajustada >= DIFERENCA_RELEVANTE else False,
 )
 
+st.subheader("Onde o lugar faz diferença")
+st.markdown("Para os 10 assuntos mais pedidos, comparamos a regional mais rápida com a mais lenta **no mesmo tipo "
+            "de pedido**. Se a diferença é grande, ali o lugar importa de verdade.")
+por_assunto = analise.diferenca_entre_regionais_por_assunto(base)
+st.dataframe(por_assunto, hide_index=True, width="stretch", column_config={
+    "Chamados": st.column_config.NumberColumn(format="%d"),
+    "% atraso (mais rápida)": st.column_config.NumberColumn(format="%.1f%%"),
+    "% atraso (mais lenta)": st.column_config.NumberColumn(format="%.1f%%"),
+    "Diferença (pontos)": st.column_config.ProgressColumn(format="%.0f", min_value=0, max_value=100)})
+if len(por_assunto):
+    destaque = por_assunto.iloc[0]
+    st.caption(
+        f"Exemplo: em **{destaque['Assunto']}** ({num(destaque['Chamados'])} chamados), a regional "
+        f"{destaque['Regional mais rápida']} atrasa {pct(destaque['% atraso (mais rápida)'])} dos pedidos e a "
+        f"{destaque['Regional mais lenta']}, {pct(destaque['% atraso (mais lenta)'])}. Ou seja: **em geral** o tipo de "
+        "problema explica mais o atraso (H2), mas **em alguns serviços** — normalmente os feitos por equipes "
+        "regionais, como coleta e poda — o lugar faz muita diferença (H1)."
+    )
+
 with st.expander("Ver um assunto específico em cada regional"):
     assuntos = base["Assunto"].value_counts()
     assunto = st.selectbox("Assunto", assuntos[assuntos >= 2000].index, key="sim_assunto_h2")

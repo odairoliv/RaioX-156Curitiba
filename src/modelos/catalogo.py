@@ -3,8 +3,14 @@
 Cada parâmetro é descrito por um dicionário. A tela lê esse catálogo e cria os
 controles (sliders/caixas) automaticamente, então para oferecer um algoritmo novo
 basta acrescentá-lo aqui.
+
+"entrada" indica como as características chegam ao algoritmo:
+- "onehot" (padrão): cada valor vira uma coluna 0/1;
+- "categorias": cada valor vira um código e o algoritmo trata como categoria
+  (usado pelo Gradient Boosting, que lida bem com categorias e fica muito mais rápido assim).
 """
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import (HistGradientBoostingClassifier, HistGradientBoostingRegressor, RandomForestClassifier,
+                              RandomForestRegressor)
 from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
@@ -34,6 +40,12 @@ PESO_VIZINHOS = _opcao("weights", "Peso dos vizinhos", ["uniform", "distance"], 
                        "'distance' dá mais importância aos vizinhos mais parecidos.")
 ARVORES = _inteiro("n_estimators", "Número de árvores", 10, 300, 100,
                    "Quantas árvores a floresta combina. Mais árvores = mais estável, porém mais lento.")
+ETAPAS = _inteiro("max_iter", "Número de árvores (etapas)", 20, 500, 200,
+                  "Quantas árvores são criadas em sequência; cada uma corrige os erros das anteriores.")
+PROFUNDIDADE_BOOSTING = _inteiro("max_depth", "Profundidade de cada árvore", 2, 15, 6,
+                                 "Árvores pequenas em sequência costumam funcionar melhor que uma árvore grande.")
+APRENDIZADO = _decimal("learning_rate", "Taxa de aprendizado", 0.01, 1.0, 0.1, 0.01,
+                       "Quanto cada nova árvore corrige as anteriores. Valores menores são mais cuidadosos.")
 BALANCEAR = _opcao("class_weight", "Balancear classes", ["balanced", "nenhum"], "balanced",
                    "Compensa o fato de haver menos chamados atrasados que no prazo.")
 
@@ -50,11 +62,10 @@ MODELOS_REGRESSAO = {
             "descricao": "Procura os K chamados mais parecidos e usa a média de dias deles."},
     "Random Forest": {"classe": RandomForestRegressor, "parametros": [ARVORES, PROFUNDIDADE, FOLHA],
                       "descricao": "Várias árvores de decisão votam juntas. Costuma ser mais preciso que uma árvore só."},
-    "Gradient Boosting": {"classe": GradientBoostingRegressor, "parametros": [
-        ARVORES, _inteiro("max_depth", "Profundidade de cada árvore", 1, 10, 3),
-        _decimal("learning_rate", "Taxa de aprendizado", 0.01, 1.0, 0.1, 0.01,
-                 "Quanto cada nova árvore corrige as anteriores.")],
-        "descricao": "Árvores criadas em sequência, cada uma corrigindo os erros da anterior."},
+    "Gradient Boosting": {"classe": HistGradientBoostingRegressor, "entrada": "categorias",
+                          "parametros": [ETAPAS, PROFUNDIDADE_BOOSTING, APRENDIZADO],
+                          "descricao": "Um time de árvores em sequência: cada nova árvore olha só os erros das "
+                                       "anteriores e tenta corrigi-los. Costuma ser o melhor para dados em tabela."},
 }
 
 MODELOS_CLASSIFICACAO = {
@@ -72,6 +83,10 @@ MODELOS_CLASSIFICACAO = {
         _decimal("alpha", "Suavização (alpha)", 0.01, 5.0, 1.0, 0.01,
                  "Evita probabilidade zero para combinações nunca vistas.")],
         "descricao": "Usa estatística (teorema de Bayes) assumindo que as características são independentes."},
+    "Gradient Boosting": {"classe": HistGradientBoostingClassifier, "entrada": "categorias",
+                          "parametros": [ETAPAS, PROFUNDIDADE_BOOSTING, APRENDIZADO, BALANCEAR],
+                          "descricao": "Um time de árvores em sequência: cada nova árvore olha só os chamados que as "
+                                       "anteriores erraram e tenta acertá-los. Costuma ser o melhor para dados em tabela."},
 }
 
 
@@ -86,6 +101,10 @@ def criar_modelo(catalogo: dict, nome: str, parametros: dict, semente: int = 42)
     elif "n_jobs" in classe().get_params():
         params["n_jobs"] = -1
     return classe(**params)
+
+
+def tipo_de_entrada(catalogo: dict, nome: str) -> str:
+    return catalogo[nome].get("entrada", "onehot")
 
 
 def parametros_padrao(catalogo: dict, nome: str) -> dict:

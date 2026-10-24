@@ -1,14 +1,23 @@
 """Partes comuns aos dois modelos (classificação e regressão).
 
-As características são todas categóricas (texto). O OneHotEncoder transforma cada
-valor em uma coluna 0/1: "Assunto = Iluminação Pública" vira uma coluna que vale 1
-quando o chamado é desse assunto.
+As características são todas categóricas (texto). Antes de chegar ao algoritmo elas
+são transformadas em números de um destes jeitos:
+- one-hot: cada valor vira uma coluna 0/1 ("Assunto = Iluminação Pública" vale 1
+  quando o chamado é desse assunto) — usado pela maioria dos algoritmos;
+- categorias: cada valor vira um código (Iluminação Pública = 17) e o algoritmo sabe
+  que é uma categoria, não um número — usado pelo Gradient Boosting.
+Nos dois casos, valores raros (menos de 20 chamados no treino) são agrupados em "outros".
 """
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
+from sklearn.compose import ColumnTransformer, TransformedTargetRegressor
 from sklearn.inspection import permutation_importance
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+
+from src.modelos.catalogo import criar_modelo, tipo_de_entrada
+
+MINIMO_POR_VALOR = 20  # valores com menos chamados que isso no treino viram "outros"
 
 # Característica -> nome amigável
 CARACTERISTICAS = {
@@ -33,11 +42,30 @@ GRUPOS = {
 }
 
 
-def criar_preparo(caracteristicas: list[str]) -> ColumnTransformer:
-    """One-hot das características escolhidas. Valores raros (< 20 casos) viram "outros"."""
-    return ColumnTransformer([
-        ("categoricas", OneHotEncoder(handle_unknown="infrequent_if_exist", min_frequency=20), caracteristicas),
-    ])
+def criar_preparo(caracteristicas: list[str], entrada: str = "onehot") -> ColumnTransformer:
+    """Transforma as características escolhidas em números (one-hot ou códigos de categoria)."""
+    if entrada == "categorias":
+        codificador = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan,
+                                     encoded_missing_value=np.nan, min_frequency=MINIMO_POR_VALOR, max_categories=250)
+    else:
+        codificador = OneHotEncoder(handle_unknown="infrequent_if_exist", min_frequency=MINIMO_POR_VALOR)
+    return ColumnTransformer([("categoricas", codificador, caracteristicas)])
+
+
+def criar_pipeline(catalogo: dict, modelo_nome: str, parametros: dict, caracteristicas: list[str],
+                   prever_log: bool = False) -> Pipeline:
+    """Monta "preparo dos dados -> algoritmo" para o algoritmo e as características escolhidos.
+
+    `prever_log=True` (regressão de dias): o algoritmo aprende log(1 + dias) e a previsão é
+    convertida de volta para dias, para os poucos chamados muito demorados não "puxarem" tudo.
+    """
+    entrada = tipo_de_entrada(catalogo, modelo_nome)
+    modelo = criar_modelo(catalogo, modelo_nome, parametros)
+    if entrada == "categorias":
+        modelo.set_params(categorical_features=[True] * len(caracteristicas))
+    if prever_log:
+        modelo = TransformedTargetRegressor(modelo, func=np.log1p, inverse_func=np.expm1)
+    return Pipeline([("preparo", criar_preparo(caracteristicas, entrada)), ("modelo", modelo)])
 
 
 def importancia_por_caracteristica(pipeline, X_teste: pd.DataFrame, y_teste: pd.Series, metrica: str,

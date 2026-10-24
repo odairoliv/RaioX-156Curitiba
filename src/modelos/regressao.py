@@ -6,13 +6,12 @@ não têm o número de dias final).
 """
 import numpy as np
 import pandas as pd
-from sklearn.compose import TransformedTargetRegressor
 from sklearn.metrics import mean_absolute_error, median_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-from src.modelos.catalogo import MODELOS_REGRESSAO, criar_modelo
-from src.modelos.comum import CARACTERISTICAS, criar_preparo, entrada_para_previsao, importancia_por_caracteristica
+from src.modelos.catalogo import MODELOS_REGRESSAO
+from src.modelos.comum import CARACTERISTICAS, criar_pipeline, entrada_para_previsao, importancia_por_caracteristica
 from src.modelos.registro import ResultadoTreino
 
 TOLERANCIA_DIAS = 7  # usada na métrica "% de previsões com erro de até 7 dias"
@@ -29,11 +28,10 @@ def treinar_regressao(base: pd.DataFrame, modelo_nome: str, parametros: dict, ve
     X, y = amostra[caracteristicas], amostra["dias_resposta"].astype(float)
     X_treino, X_teste, y_treino, y_teste = train_test_split(X, y, test_size=proporcao_teste, random_state=42)
 
-    # O modelo aprende log(1 + dias) e a previsão é convertida de volta para dias.
-    # Assim os poucos chamados muito demorados (até ~280 dias) não "puxam" todas as previsões para cima.
-    modelo = TransformedTargetRegressor(criar_modelo(MODELOS_REGRESSAO, modelo_nome, parametros),
-                                        func=np.log1p, inverse_func=np.expm1)
-    pipeline = Pipeline([("preparo", criar_preparo(caracteristicas)), ("modelo", modelo)]).fit(X_treino, y_treino)
+    # prever_log: o modelo aprende log(1 + dias) e a previsão volta para dias, para os poucos
+    # chamados muito demorados (até ~280 dias) não "puxarem" todas as previsões para cima
+    pipeline = criar_pipeline(MODELOS_REGRESSAO, modelo_nome, parametros, caracteristicas,
+                              prever_log=True).fit(X_treino, y_treino)
     previsto = np.clip(pipeline.predict(X_teste), 0, None)  # dias negativos não existem
     erro = np.abs(y_teste.to_numpy() - previsto)
     # "Chute": prever sempre a mediana de dias do treino, sem olhar o chamado
@@ -52,6 +50,9 @@ def treinar_regressao(base: pd.DataFrame, modelo_nome: str, parametros: dict, ve
         metricas=metricas, n_registros=len(amostra), periodo=periodo, versao_dados=versao_dados,
         detalhes={
             "real_vs_previsto": pd.DataFrame({"Real": y_teste.to_numpy(), "Previsto": previsto}),
+            # Alguns chamados de teste com a previsão, para mostrar exemplos reais na tela
+            "exemplos": amostra.loc[X_teste.index, ["Orgao", "Assunto", "Subdivisao", "chave", "dias_resposta"]]
+                        .assign(previsto=previsto).sample(min(500, len(X_teste)), random_state=7),
             "importancia": importancia_por_caracteristica(pipeline, X_teste, y_teste, "neg_mean_absolute_error"),
             "caracteristicas": caracteristicas, "tamanho_amostra": tamanho_amostra,
             "n_treino": len(X_treino), "n_teste": len(X_teste),
@@ -62,3 +63,9 @@ def treinar_regressao(base: pd.DataFrame, modelo_nome: str, parametros: dict, ve
 def prever_dias(pipeline: Pipeline, chamado: dict) -> float:
     """Número de dias previsto para um chamado novo."""
     return float(max(pipeline.predict(entrada_para_previsao(pipeline, chamado))[0], 0))
+
+
+def prever_dias_varios(pipeline: Pipeline, chamados: pd.DataFrame) -> np.ndarray:
+    """Dias previstos para vários chamados de uma vez (usado na comparação entre bairros)."""
+    colunas = list(pipeline.named_steps["preparo"].feature_names_in_)
+    return np.clip(pipeline.predict(chamados[colunas].astype(str)), 0, None)

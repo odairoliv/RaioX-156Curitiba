@@ -28,3 +28,10 @@ def test_comparacao_justa_preserva_a_media(base):
 def test_mapa_por_bairro_tem_nomes(base):
     bairros = analise.por_bairro(base)
     assert len(bairros) >= 70 and bairros["bairro"].notna().all()
+
+
+def test_diferenca_entre_regionais_por_assunto(base):
+    tabela = analise.diferenca_entre_regionais_por_assunto(base, quantidade=5)
+    assert 1 <= len(tabela) <= 5
+    assert (tabela["% atraso (mais lenta)"] >= tabela["% atraso (mais rápida)"]).all()
+    assert tabela["Diferença (pontos)"].is_monotonic_decreasing
