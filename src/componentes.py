@@ -3,8 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from src import estado
-from src.graficos import ICONES_SITUACAO
-from src.indicadores import DIMENSOES, PRESETS_PESOS
+from src.modelos.comum import CARACTERISTICAS, GRUPOS
 
 ss = st.session_state
 
@@ -25,32 +24,6 @@ def pct(valor, casas: int = 1) -> str:
 
 def data_br(data) -> str:
     return "—" if data is None or pd.isna(data) else pd.Timestamp(data).strftime("%d/%m/%Y")
-
-
-def situacao_com_icone(situacao: str) -> str:
-    return f"{ICONES_SITUACAO.get(situacao, '')} {situacao}"
-
-
-# ---------- Pesos da nota ----------
-
-def _aplicar_preset() -> None:
-    for chave, peso in PRESETS_PESOS[ss.preset_pesos].items():
-        ss[f"peso_{chave}"] = float(peso)
-
-
-def seletor_pesos() -> dict:
-    """Barra lateral: perfil de uso + ajuste fino dos pesos. Devolve {dimensão: peso}."""
-    if "preset_pesos" not in ss:
-        ss.preset_pesos = "Equilibrado"
-        _aplicar_preset()
-    with st.sidebar:
-        st.subheader("Como calcular a nota")
-        st.selectbox("Perfil", list(PRESETS_PESOS), key="preset_pesos", on_change=_aplicar_preset,
-                     help="Cada perfil dá mais importância a dimensões diferentes.")
-        with st.expander("Ajustar pesos manualmente"):
-            for d in DIMENSOES:
-                st.slider(d.nome, 0.0, 3.0, step=0.5, key=f"peso_{d.chave}", help=d.descricao)
-    return {d.chave: ss[f"peso_{d.chave}"] for d in DIMENSOES}
 
 
 # ---------- Status dos dados ----------
@@ -92,7 +65,7 @@ def aviso_modelo(tipo: str) -> None:
     """Mostra quando o modelo foi treinado e avisa se os dados mudaram desde então."""
     resultado = estado.modelo(tipo)
     if resultado is None:
-        st.info("Nenhum modelo treinado ainda nesta sessão. Escolha o algoritmo acima e clique em **Treinar**.")
+        st.info("Nenhum modelo treinado ainda nesta sessão. Configure acima e clique em **Treinar**.")
         return
     texto = (f"Modelo atual: **{resultado.modelo_nome}**, treinado em {resultado.treinado_em:%d/%m/%Y %H:%M} "
              f"com {num(resultado.n_registros)} registros ({data_br(resultado.periodo[0])} a {data_br(resultado.periodo[1])}).")
@@ -100,3 +73,19 @@ def aviso_modelo(tipo: str) -> None:
         st.warning("⚠️ Novos dados foram carregados depois deste treino. " + texto + " Clique em **Re-treinar**.")
     else:
         st.success(texto)
+
+
+def seletor_caracteristicas(prefixo: str) -> list[str]:
+    """Escolha dos grupos de características usados pelo modelo (ligados às hipóteses)."""
+    grupos = st.multiselect(
+        "Características usadas pelo modelo", list(GRUPOS), default=list(GRUPOS), key=f"{prefixo}_grupos",
+        help="Treine só com 'Onde' e depois só com 'O quê' e compare as métricas: o grupo que prevê melhor é o que "
+             "mais explica o atraso (H1 x H2).")
+    escolhidas = [c for g in grupos for c in GRUPOS[g]] or list(CARACTERISTICAS)
+    if not grupos:
+        st.caption("Nenhum grupo escolhido: o modelo usará todas as características.")
+    return escolhidas
+
+
+def nomes_caracteristicas(caracteristicas: list[str]) -> str:
+    return ", ".join(CARACTERISTICAS[c].lower() for c in caracteristicas)

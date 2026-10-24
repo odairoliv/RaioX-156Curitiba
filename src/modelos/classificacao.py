@@ -1,92 +1,33 @@
-"""Classificação: "este chamado vai ser resolvido com atraso?"
+"""Classificação: "este chamado vai ser respondido com atraso (mais de 30 dias)?"
 
-Um chamado é considerado ATRASADO quando levou mais de 30 dias para ser respondido
-(ou continua sem resposta depois de 30 dias). O modelo aprende, com os chamados
-antigos, quais combinações de assunto, órgão, bairro, canal etc. costumam atrasar.
-Útil para a prefeitura priorizar e para o cidadão saber o que esperar.
+O modelo aprende, com os chamados antigos, quais combinações de órgão, assunto,
+bairro, canal etc. costumam atrasar. As métricas são calculadas em chamados
+separados para teste, que o modelo nunca viu.
 """
 import numpy as np
 import pandas as pd
-from sklearn.compose import ColumnTransformer
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
 
-from src.config import PRAZO_ATRASO_DIAS
-from src.indicadores import apenas_demandas
 from src.modelos.catalogo import MODELOS_CLASSIFICACAO, criar_modelo
+from src.modelos.comum import CARACTERISTICAS, criar_preparo, entrada_para_previsao, importancia_por_caracteristica
 from src.modelos.registro import ResultadoTreino
-
-DIAS_DA_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-
-# Características usadas pelo modelo (todas categóricas) e o nome amigável de cada uma
-CARACTERISTICAS = {
-    "Assunto": "Assunto",
-    "Subdivisao": "Detalhe do assunto",
-    "Orgao": "Órgão responsável",
-    "Tipo": "Tipo de chamado",
-    "Origem": "Canal de abertura",
-    "chave": "Bairro",
-    "Regional": "Regional",
-    "dia_semana": "Dia da semana",
-    "mes_nome": "Mês",
-}
-
-
-def montar_base_atraso(chamados: pd.DataFrame, prazo: int = PRAZO_ATRASO_DIAS) -> pd.DataFrame:
-    """Monta a tabela de treino: características + coluna 'atrasou' (1 = sim, 0 = não)."""
-    demandas = apenas_demandas(chamados)
-    data_ref = chamados["data"].max()
-    # Chamados recentes ainda não tiveram tempo de atrasar: ficam de fora
-    maduros = demandas[demandas["data"] <= data_ref - pd.Timedelta(days=prazo)].copy()
-    respondido = maduros["dias_resposta"].notna()
-    maduros["atrasou"] = np.where(respondido, maduros["dias_resposta"] > prazo, maduros["pendente"])
-    # Sem data de resposta e sem estar pendente = situação desconhecida
-    maduros = maduros[respondido | maduros["pendente"]]
-
-    maduros["dia_semana"] = maduros["data"].dt.dayofweek.map(dict(enumerate(DIAS_DA_SEMANA)))
-    maduros["mes_nome"] = maduros["data"].dt.month.astype(str)
-    base = maduros[list(CARACTERISTICAS)].astype(str)
-    base["atrasou"] = maduros["atrasou"].astype(int)
-    return base.reset_index(drop=True)
-
-
-def _criar_pipeline(modelo_nome: str, parametros: dict) -> Pipeline:
-    # Categorias raras (menos de 20 ocorrências) são agrupadas em "outros"
-    preparo = ColumnTransformer([
-        ("categoricas", OneHotEncoder(handle_unknown="infrequent_if_exist", min_frequency=20), list(CARACTERISTICAS)),
-    ])
-    return Pipeline([("preparo", preparo), ("modelo", criar_modelo(MODELOS_CLASSIFICACAO, modelo_nome, parametros))])
-
-
-def _importancia_por_caracteristica(pipeline: Pipeline) -> pd.Series | None:
-    """Soma a importância de cada coluna 'one-hot' de volta na característica original."""
-    modelo = pipeline.named_steps["modelo"]
-    if hasattr(modelo, "feature_importances_"):
-        valores = modelo.feature_importances_
-    elif hasattr(modelo, "coef_"):
-        valores = np.abs(modelo.coef_[0])
-    else:
-        return None  # KNN e Naive Bayes não oferecem importância diretamente
-    # Os nomes gerados são do tipo "categoricas__Assunto_Coleta": casamos pelo prefixo
-    nomes = [n.split("__", 1)[1] for n in pipeline.named_steps["preparo"].get_feature_names_out()]
-    origem = [next(c for c in CARACTERISTICAS if n.startswith(c + "_")) for n in nomes]
-    importancia = pd.Series(valores, index=origem).groupby(level=0).sum()
-    importancia.index = importancia.index.map(CARACTERISTICAS)
-    return (importancia / importancia.sum() * 100).sort_values()
 
 
 def treinar_classificador(base: pd.DataFrame, modelo_nome: str, parametros: dict, versao_dados: str,
                           periodo: tuple, tamanho_amostra: int = 40_000,
+                          caracteristicas: list[str] | None = None,
                           proporcao_teste: float = 0.25) -> ResultadoTreino:
-    """Treina o classificador numa amostra, avalia em dados separados e devolve as métricas."""
+    """Treina numa amostra (75% treino / 25% teste) e devolve métricas e detalhes para os gráficos."""
+    caracteristicas = caracteristicas or list(CARACTERISTICAS)
     amostra = base.sample(n=min(tamanho_amostra, len(base)), random_state=42)
-    X, y = amostra[list(CARACTERISTICAS)], amostra["atrasou"]
+    X, y = amostra[caracteristicas], amostra["atrasou"]
     X_treino, X_teste, y_treino, y_teste = train_test_split(
         X, y, test_size=proporcao_teste, random_state=42, stratify=y)
 
-    pipeline = _criar_pipeline(modelo_nome, parametros).fit(X_treino, y_treino)
+    modelo = criar_modelo(MODELOS_CLASSIFICACAO, modelo_nome, parametros)
+    pipeline = Pipeline([("preparo", criar_preparo(caracteristicas)), ("modelo", modelo)]).fit(X_treino, y_treino)
     previsto = pipeline.predict(X_teste)
     maioria = int(y_treino.mode()[0])
 
@@ -104,7 +45,8 @@ def treinar_classificador(base: pd.DataFrame, modelo_nome: str, parametros: dict
         metricas=metricas, n_registros=len(amostra), periodo=periodo, versao_dados=versao_dados,
         detalhes={
             "matriz_confusao": confusion_matrix(y_teste, previsto, labels=[0, 1]),
-            "importancia": _importancia_por_caracteristica(pipeline),
+            "importancia": importancia_por_caracteristica(pipeline, X_teste, y_teste, "f1"),
+            "caracteristicas": caracteristicas, "tamanho_amostra": tamanho_amostra,
             "n_treino": len(X_treino), "n_teste": len(X_teste),
         },
     )
@@ -112,5 +54,4 @@ def treinar_classificador(base: pd.DataFrame, modelo_nome: str, parametros: dict
 
 def prever_chamado(pipeline: Pipeline, chamado: dict) -> float:
     """Probabilidade (0 a 1) de um chamado novo atrasar."""
-    entrada = pd.DataFrame([{c: str(chamado.get(c, "")) for c in CARACTERISTICAS}])
-    return float(pipeline.predict_proba(entrada)[0, 1])
+    return float(pipeline.predict_proba(entrada_para_previsao(pipeline, chamado))[0, 1])

@@ -1,65 +1,52 @@
-"""Página inicial: o que é o sistema, para quem é e um resumo dos dados atuais."""
+"""Página inicial: a pergunta do trabalho, as hipóteses e um resumo dos dados atuais."""
 import streamlit as st
 
 from src import estado
 from src.componentes import data_br, num, pct, status_dados_na_barra_lateral
-from src.indicadores import apenas_demandas
+from src.config import PRAZO_ATRASO_DIAS
 
 status_dados_na_barra_lateral()
 
-st.title("🏙️ Raio-X dos Bairros de Curitiba")
+st.title("⏱️ Seu chamado vai demorar?")
 st.markdown(
-    "Um retrato da **saúde de cada bairro** feito com dados abertos da Prefeitura de Curitiba: "
-    "o que a população mais reclama, como a prefeitura responde, que estrutura existe no bairro e "
-    "**para onde as coisas estão indo** — com previsões feitas por machine learning."
+    "Quando um morador de Curitiba pede algo à prefeitura pela **Central 156** — trocar uma lâmpada, tapar um buraco, "
+    "podar uma árvore — quanto tempo leva para ser atendido? E **isso depende de onde a pessoa mora?**\n\n"
+    "Este sistema analisa os chamados do 156 (dados abertos da prefeitura) para responder a essa pergunta e usa "
+    "**machine learning** para prever se um chamado novo vai atrasar e quantos dias deve levar."
 )
 
-chamados = estado.chamados()
-demandas = apenas_demandas(chamados)
+base = estado.base()
 inicio, fim = estado.periodo_chamados()
-respondidos = demandas["dias_resposta"].dropna()
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Chamados na base", num(len(estado.chamados())), help=f"De {data_br(inicio)} a {data_br(fim)}.")
+c2.metric("Chamados analisados", num(len(base)),
+          help=f"Solicitações, reclamações e denúncias abertas há pelo menos {PRAZO_ATRASO_DIAS} dias.")
+c3.metric(f"Atrasaram (+{PRAZO_ATRASO_DIAS} dias)", pct(base["atrasou"].mean() * 100))
+c4.metric("Tempo típico de resposta", f"{num(base['dias_resposta'].median())} dias",
+          help="Mediana: metade dos chamados é respondida em até este número de dias.")
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Chamados analisados", num(len(chamados)), help="Registros da Central 156 na base atual.")
-col2.metric("Meses de dados", num((fim - inicio).days / 30.44, 1), help=f"De {data_br(inicio)} a {data_br(fim)}.")
-col3.metric("Bairros", "75")
-col4.metric("Respondidos em até 30 dias", pct((respondidos <= 30).mean() * 100),
-            help="Entre os chamados que já têm data de resposta.")
-st.caption(
-    f"**O que são esses números:** cada *chamado* é um registro na Central 156 da prefeitura (telefone, aplicativo, "
-    f"portal ou chat) — pedidos de serviço, reclamações, denúncias, elogios. Desses, {num(len(demandas))} são "
-    "**demandas** (solicitações, reclamações e denúncias), que indicam algo a resolver no bairro. Para comparar "
-    "bairros de tamanhos diferentes, o sistema também usa a **população de cada bairro (IBGE, Censo 2022)**. "
-    "Detalhes em *Metodologia e dados*."
+st.subheader("As hipóteses")
+st.markdown(
+    f"Um chamado é considerado **atrasado** quando levou **mais de {PRAZO_ATRASO_DIAS} dias** para ser respondido "
+    "(ou continua sem resposta depois disso).\n\n"
+    "| | Hipótese | Como testamos |\n|---|---|---|\n"
+    "| **H1** | A **região** onde a pessoa mora muda a chance de atraso | % de atraso por regional e por bairro (mapa) |\n"
+    "| **H2** | O **tipo de problema** pesa mais que a região | % de atraso por órgão; comparação \"justa\" entre regiões; "
+    "modelo treinado só com região × só com tipo de problema |\n"
+    "| **H3** | **Denúncias** demoram mais que solicitações e reclamações | % de atraso por tipo de chamado |\n"
+    "| **H4** | O **canal** usado (telefone, app, portal, chat) muda a velocidade | % de atraso por canal |"
 )
-
-st.divider()
-esquerda, direita = st.columns(2)
-with esquerda, st.container(border=True):
-    st.subheader("👪 Para o cidadão")
-    st.markdown(
-        "- Vai **se mudar** ou **se hospedar** em Curitiba? Veja a nota de cada bairro.\n"
-        "- Compare bairros lado a lado e descubra os pontos fortes e fracos de cada um.\n"
-        "- Saiba quanto tempo a prefeitura costuma levar para resolver um pedido."
-    )
-    st.page_link("paginas/raio_x_bairro.py", label="Abrir o Raio-X do bairro", icon="🔎")
-with direita, st.container(border=True):
-    st.subheader("🏛️ Para a gestão pública")
-    st.markdown(
-        "- Bairros e ruas que concentram problemas, e onde as demandas estão **crescendo**.\n"
-        "- Órgãos com mais atraso e chamados parados há mais de 30 dias.\n"
-        "- Previsão das próximas semanas para planejar equipes."
-    )
-    st.page_link("paginas/pontos_atencao.py", label="Ver os pontos de atenção", icon="🚨")
 
 st.subheader("Como usar")
 st.markdown(
-    "1. **Enviar dados** — o sistema já vem com a base da Central 156 (jan–set/2026). Você pode enviar "
-    "arquivos novos (.csv, .json ou .xml) com as mesmas colunas, como o mês seguinte ou outro período.\n"
-    "2. **Mapa da cidade** e **Raio-X do bairro** — gráficos e notas são recalculados automaticamente.\n"
-    "3. **Previsão de tendência** e **Previsão de atraso** — escolha o algoritmo, ajuste os parâmetros e "
-    "treine. Sempre que chegarem dados novos, use **Re-treinar**."
+    "1. **Análise das hipóteses** — gráficos e a conclusão de cada hipótese, calculados com os dados atuais.\n"
+    "2. **Previsão** — escolha entre *Vai atrasar?* (classificação) e *Quantos dias?* (regressão), o algoritmo e "
+    "os parâmetros; treine e simule um chamado.\n"
+    "3. **Enviar dados** — envie um novo arquivo do 156 (.csv, .json ou .xml), como o mês seguinte. "
+    "As análises são recalculadas e os modelos podem ser re-treinados."
 )
-st.page_link("paginas/enviar_dados.py", label="Enviar um arquivo", icon="📂")
-st.caption("Fontes: Portal de Dados Abertos de Curitiba (Central 156, Equipamentos Urbanos, E-Saúde), "
-           "IPPUC (limites dos bairros) e IBGE — Censo 2022 (população).")
+col1, col2, col3 = st.columns(3)
+col1.page_link("paginas/hipoteses.py", label="Ver as hipóteses", icon="🔎")
+col2.page_link("paginas/previsao.py", label="Fazer uma previsão", icon="🧠")
+col3.page_link("paginas/enviar_dados.py", label="Enviar dados", icon="📂")
+st.caption("Fonte: Portal de Dados Abertos de Curitiba — Central 156. Mapa dos bairros: IPPUC.")

@@ -1,12 +1,11 @@
-"""Upload de arquivos (.csv, .json, .xml). O tipo de base é reconhecido pelas colunas."""
+"""Upload de arquivos da Central 156 (.csv, .json, .xml)."""
 import pandas as pd
 import streamlit as st
 
 from src import estado
-from src.bairros import fonte_populacao, tabela_bairros
 from src.componentes import data_br, num, status_dados_na_barra_lateral
 from src.config import PASTA_EXEMPLOS
-from src.leitura import COLUNAS_OBRIGATORIAS, FORMATOS_ACEITOS, NOMES_TIPOS, ErroDeArquivo
+from src.leitura import COLUNAS_OBRIGATORIAS, COLUNAS_OPCIONAIS, FORMATOS_ACEITOS, ErroDeArquivo
 from src.treino import retreinar_modelos_existentes
 
 ss = st.session_state
@@ -14,32 +13,30 @@ status_dados_na_barra_lateral()
 
 st.title("📂 Enviar dados")
 st.markdown(
-    "Envie arquivos exportados do [Portal de Dados Abertos de Curitiba](https://dadosabertos.curitiba.pr.gov.br/) "
-    "ou de qualquer fonte com **as mesmas colunas**. O sistema reconhece sozinho qual é a base, "
-    "limpa os dados e atualiza todos os gráficos, notas e modelos."
+    "Envie arquivos da **Central 156** exportados do [Portal de Dados Abertos de Curitiba]"
+    "(https://dadosabertos.curitiba.pr.gov.br/) — por exemplo, o mês seguinte ou outro período. "
+    "O sistema confere as colunas, limpa os dados e recalcula as análises. Os modelos podem ser re-treinados "
+    "automaticamente com os dados novos."
 )
 
 with st.expander("Quais arquivos posso enviar?"):
-    for tipo, colunas in COLUNAS_OBRIGATORIAS.items():
-        st.markdown(f"- **{NOMES_TIPOS[tipo]}** — colunas obrigatórias: `{'`, `'.join(colunas)}`")
     st.markdown(
-        "Formatos: **.csv** (separado por `;` ou `,`, em UTF-8 ou Latin-1), **.json** (lista de registros) "
-        "e **.xml** (um elemento por registro). Arquivos `.gz` também são aceitos.\n\n"
+        f"- **Colunas obrigatórias:** `{'`, `'.join(COLUNAS_OBRIGATORIAS)}`\n"
+        f"- **Colunas opcionais:** `{'`, `'.join(COLUNAS_OPCIONAIS)}`\n"
+        "- **Formatos:** .csv (separado por `;` ou `,`, em UTF-8 ou Latin-1), .json (lista de registros) e .xml "
+        "(um elemento por chamado). Arquivos `.gz` também são aceitos.\n\n"
         f"Na pasta `{PASTA_EXEMPLOS.relative_to(PASTA_EXEMPLOS.parents[1])}` do projeto há exemplos prontos: "
         "outubro/2026 em CSV e a primeira semana de outubro em JSON e XML."
     )
 
 arquivos = st.file_uploader("Arquivos", type=FORMATOS_ACEITOS, accept_multiple_files=True)
 modo = st.radio(
-    "Para a base do 156, o que fazer com os dados atuais?",
-    ["Adicionar ao que já existe", "Substituir toda a base"],
+    "O que fazer com os dados atuais?", ["Adicionar ao que já existe", "Substituir toda a base"], horizontal=True,
     help="Ao adicionar, o período coberto pelo arquivo novo substitui o mesmo período da base atual "
          "(enviar o mesmo mês duas vezes não duplica nada).",
-    horizontal=True,
 )
-retreinar = st.checkbox("Re-treinar automaticamente os modelos já treinados", value=True,
-                        disabled=not ss.modelos,
-                        help="Disponível depois que algum modelo foi treinado nas páginas de Machine Learning.")
+retreinar = st.checkbox("Re-treinar automaticamente os modelos já treinados", value=True, disabled=not ss.modelos,
+                        help="Disponível depois que algum modelo foi treinado na página Previsão.")
 
 if st.button("Processar arquivos", type="primary", disabled=not arquivos):
     algum_ok = False
@@ -52,42 +49,35 @@ if st.button("Processar arquivos", type="primary", disabled=not arquivos):
                 continue
         algum_ok = True
         descartadas = resumo["linhas_lidas"] - resumo["linhas_validas"]
-        mensagem = (f"**{arquivo.name}** reconhecido como *{resumo['tipo']}*: "
-                    f"{num(resumo['linhas_validas'])} linhas válidas de {num(resumo['linhas_lidas'])} lidas")
+        mensagem = (f"**{arquivo.name}**: {num(resumo['linhas_validas'])} chamados válidos de "
+                    f"{num(resumo['linhas_lidas'])} lidos, de {data_br(resumo['periodo'][0])} a "
+                    f"{data_br(resumo['periodo'][1])}")
         if descartadas:
-            mensagem += f" ({num(descartadas)} descartadas: sem data, bairro desconhecido, duplicadas ou fora do escopo)"
+            mensagem += f" ({num(descartadas)} descartados por falta de data ou bairro fora dos 75 oficiais)"
         st.success(mensagem + ".")
     if algum_ok and retreinar and ss.modelos:
-        with st.spinner("Re-treinando modelos com os dados novos..."):
+        with st.spinner("Re-treinando os modelos com os dados novos..."):
             feitos = retreinar_modelos_existentes()
         st.success("Modelos re-treinados: " + ", ".join(feitos))
 
-st.subheader("Bases em uso")
-linhas = []
-for tipo, df in ss.bases.items():
-    rel = ss.relatorios[tipo]
-    linha = {"Base": NOMES_TIPOS[tipo], "Origem": ss.origens[tipo], "Linhas válidas": num(len(df))}
-    if tipo == "156":
-        linha["Período"] = f"{data_br(df['data'].min())} a {data_br(df['data'].max())}"
-    linhas.append(linha)
-populacao = tabela_bairros()["populacao"]
-linhas.append({"Base": NOMES_TIPOS["populacao"], "Origem": fonte_populacao(),
-               "Linhas válidas": f"{populacao.notna().sum()} bairros", "Período": f"{num(populacao.sum())} habitantes"})
-st.dataframe(pd.DataFrame(linhas), hide_index=True, width="stretch")
-st.caption("A **população** vale para todo o app (fica em `data/populacao_bairros.csv`). Para trocá-la, envie aqui um "
-           "CSV com as colunas `bairro;populacao` contendo os 75 bairros — ou veja outras formas em *Metodologia e dados*.")
-
-if st.button("Restaurar bases padrão"):
+st.subheader("Base em uso")
+inicio, fim = estado.periodo_chamados()
+c1, c2, c3 = st.columns(3)
+c1.metric("Chamados", num(len(estado.chamados())))
+c2.metric("Período", f"{data_br(inicio)} a {data_br(fim)}")
+c3.metric("Analisados (30+ dias)", num(len(estado.base())))
+st.caption(f"Origem: {ss.origem}")
+if st.button("Restaurar a base padrão"):
     estado.restaurar_padrao()
     st.rerun()
 
 if ss.historico_uploads:
     st.subheader("Arquivos enviados nesta sessão")
     historico = pd.DataFrame(ss.historico_uploads)
-    colunas = ["enviado_em", "arquivo", "tipo", "linhas_lidas", "linhas_validas", "bairro_desconhecido"]
-    st.dataframe(historico[[c for c in colunas if c in historico]].rename(columns={
-        "enviado_em": "Enviado em", "arquivo": "Arquivo", "tipo": "Base", "linhas_lidas": "Lidas",
-        "linhas_validas": "Válidas", "bairro_desconhecido": "Bairro desconhecido"}), hide_index=True, width="stretch")
+    st.dataframe(historico[["enviado_em", "arquivo", "linhas_lidas", "linhas_validas", "bairro_desconhecido"]]
+                 .rename(columns={"enviado_em": "Enviado em", "arquivo": "Arquivo", "linhas_lidas": "Lidas",
+                                  "linhas_validas": "Válidas", "bairro_desconhecido": "Bairro fora dos 75"}),
+                 hide_index=True, width="stretch")
 
-with st.expander("Ver as últimas 200 linhas da base do 156 (já limpa)"):
+with st.expander("Ver as últimas 200 linhas da base (já limpa)"):
     st.dataframe(estado.chamados().tail(200), width="stretch")

@@ -3,33 +3,27 @@ import streamlit as st
 
 from src import estado
 from src.modelos.classificacao import treinar_classificador
-from src.modelos.previsao import treinar_previsao
+from src.modelos.regressao import treinar_regressao
 from src.modelos.registro import salvar
 
-
-def treinar_tendencia(modelo_nome: str, parametros: dict):
-    resultado = treinar_previsao(estado.serie(), modelo_nome, parametros, st.session_state.versao_dados)
-    salvar(resultado)
-    estado.guardar_modelo(resultado)
-    return resultado
+TREINADORES = {"classificacao": treinar_classificador, "regressao": treinar_regressao}
 
 
-def treinar_atraso(modelo_nome: str, parametros: dict, tamanho_amostra: int):
-    resultado = treinar_classificador(estado.base_atraso(), modelo_nome, parametros,
-                                      st.session_state.versao_dados, estado.periodo_chamados(), tamanho_amostra)
-    resultado.detalhes["tamanho_amostra"] = tamanho_amostra
+def treinar(tipo: str, modelo_nome: str, parametros: dict, tamanho_amostra: int, caracteristicas: list[str]):
+    """Treina o classificador ou o regressor, salva em modelos_salvos/ e guarda na sessão."""
+    resultado = TREINADORES[tipo](estado.base(), modelo_nome, parametros, st.session_state.versao_dados,
+                                  estado.periodo_chamados(), tamanho_amostra, caracteristicas)
     salvar(resultado)
     estado.guardar_modelo(resultado)
     return resultado
 
 
 def retreinar_modelos_existentes() -> list[str]:
-    """Re-treina, com os dados novos, os modelos já treinados (mesmo algoritmo e parâmetros)."""
-    retreinados = []
+    """Re-treina, com os dados novos, os modelos já treinados (mesmo algoritmo, parâmetros e características)."""
+    nomes = {"classificacao": "vai atrasar?", "regressao": "quantos dias?"}
+    feitos = []
     for tipo, anterior in list(st.session_state.modelos.items()):
-        if tipo == "previsao":
-            treinar_tendencia(anterior.modelo_nome, anterior.parametros)
-        else:
-            treinar_atraso(anterior.modelo_nome, anterior.parametros, anterior.detalhes.get("tamanho_amostra", 40_000))
-        retreinados.append(f"{anterior.modelo_nome} ({'tendência' if tipo == 'previsao' else 'atraso'})")
-    return retreinados
+        treinar(tipo, anterior.modelo_nome, anterior.parametros, anterior.detalhes["tamanho_amostra"],
+                anterior.detalhes["caracteristicas"])
+        feitos.append(f"{anterior.modelo_nome} ({nomes[tipo]})")
+    return feitos

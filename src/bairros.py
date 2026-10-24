@@ -1,8 +1,8 @@
 """Lista oficial dos 75 bairros (vinda do mapa do IPPUC) e padronização de nomes.
 
-Cada base escreve o nome do bairro de um jeito ("ÁGUA VERDE", "Agua Verde",
-"CIDADE INDUSTRIAL"...). Aqui transformamos tudo numa "chave" sem acentos e em
-maiúsculas, para conseguir juntar as bases e o mapa.
+A base do 156 e o mapa escrevem o nome do bairro de jeitos diferentes ("ÁGUA VERDE",
+"Agua Verde", "CIDADE INDUSTRIAL"...). Aqui transformamos tudo numa "chave" sem acentos
+e em maiúsculas, para conseguir ligar os chamados ao mapa.
 """
 import json
 import unicodedata
@@ -10,13 +10,12 @@ from functools import lru_cache
 
 import pandas as pd
 
-from src.config import ARQUIVO_GEOJSON, ARQUIVO_POPULACAO
+from src.config import ARQUIVO_GEOJSON
 
 # Nomes usados nas bases da prefeitura que diferem do mapa
 APELIDOS = {
     "CIDADE INDUSTRIAL": "CIDADE INDUSTRIAL DE CURITIBA",
     "CIC": "CIDADE INDUSTRIAL DE CURITIBA",
-    "BOTIATUVINHA": "BUTIATUVINHA",  # grafia usada pelo IBGE
 }
 
 _PALAVRAS_MINUSCULAS = {"de", "da", "do", "das", "dos", "e"}
@@ -62,7 +61,7 @@ def carregar_geojson() -> dict:
 
 @lru_cache(maxsize=1)
 def tabela_bairros() -> pd.DataFrame:
-    """Tabela com chave, nome, regional, área (km²) e população (se informada)."""
+    """Tabela com chave, nome e regional de cada um dos 75 bairros."""
     linhas = []
     for bairro in carregar_geojson()["features"]:
         p = bairro["properties"]
@@ -70,48 +69,6 @@ def tabela_bairros() -> pd.DataFrame:
             "chave": p["chave"],
             "bairro": nome_proprio(p["nome"]),
             "regional": nome_proprio(p["nome_regional"].replace("REGIONAL ", "")),
-            "area_km2": p["area"] / 1_000_000,
         })
-    bairros = pd.DataFrame(linhas).sort_values("bairro").reset_index(drop=True)
-    bairros["populacao"] = bairros["chave"].map(_ler_populacao())
-    return bairros
+    return pd.DataFrame(linhas).sort_values("bairro").reset_index(drop=True)
 
-
-def _ler_populacao() -> dict:
-    """Lê data/populacao_bairros.csv (opcional). Devolve {chave: população}.
-
-    Linhas começando com "#" são comentários (ex.: a fonte dos dados).
-    """
-    if not ARQUIVO_POPULACAO.exists():
-        return {}
-    pop = pd.read_csv(ARQUIVO_POPULACAO, sep=";", dtype=str, comment="#")
-    pop["populacao"] = pd.to_numeric(pop["populacao"].str.replace(".", "", regex=False), errors="coerce")
-    pop = pop.dropna(subset=["populacao"])
-    return dict(zip(pop["bairro"].map(chave_bairro), pop["populacao"]))
-
-
-def fonte_populacao() -> str:
-    """Texto da linha de comentário "# Fonte: ..." do arquivo de população."""
-    if not ARQUIVO_POPULACAO.exists():
-        return "Arquivo de população não encontrado: as taxas são calculadas por km²."
-    with open(ARQUIVO_POPULACAO, encoding="utf-8") as arquivo:
-        for linha in arquivo:
-            if linha.startswith("#"):
-                return linha.lstrip("# ").strip().removeprefix("Fonte:").strip()
-    return "Fonte não informada no arquivo."
-
-
-def salvar_populacao(populacao: dict, fonte: str) -> None:
-    """Grava um novo data/populacao_bairros.csv ({chave: população}) e recarrega a tabela."""
-    nomes = tabela_bairros().set_index("chave")["bairro"]
-    with open(ARQUIVO_POPULACAO, "w", encoding="utf-8", newline="") as arquivo:
-        arquivo.write(f"# Fonte: {fonte}\n")
-        arquivo.write("bairro;populacao\n")
-        for chave, valor in sorted(populacao.items()):
-            arquivo.write(f"{nomes.get(chave, chave)};{int(valor)}\n")
-    tabela_bairros.cache_clear()
-
-
-def usa_populacao() -> bool:
-    """True quando todos os bairros têm população informada (aí as taxas são por mil habitantes)."""
-    return tabela_bairros()["populacao"].notna().all()

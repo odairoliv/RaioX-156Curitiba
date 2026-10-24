@@ -39,15 +39,15 @@ BALANCEAR = _opcao("class_weight", "Balancear classes", ["balanced", "nenhum"], 
 
 MODELOS_REGRESSAO = {
     "Regressão Linear": {"classe": LinearRegression, "parametros": [],
-                         "descricao": "Traça a 'reta' que melhor liga as semanas anteriores à próxima. Simples e fácil de explicar."},
+                         "descricao": "Soma um 'peso' em dias para cada característica (ex.: órgão X soma +12 dias). Simples e fácil de explicar."},
     "Ridge (Linear regularizada)": {"classe": Ridge, "parametros": [
         _decimal("alpha", "Força da regularização (alpha)", 0.01, 100.0, 1.0, 0.01,
                  "Quanto maior, mais 'conservador' o modelo fica.")],
         "descricao": "Regressão linear com um freio que evita coeficientes exagerados."},
     "Árvore de Decisão": {"classe": DecisionTreeRegressor, "parametros": [PROFUNDIDADE, FOLHA],
-                          "descricao": "Faz perguntas do tipo 'semana passada teve mais de 30 chamados?' até chegar a um valor."},
+                          "descricao": "Faz perguntas do tipo 'o órgão é o Urbanismo?' até chegar a um número de dias."},
     "KNN": {"classe": KNeighborsRegressor, "parametros": [VIZINHOS, PESO_VIZINHOS],
-            "descricao": "Procura situações parecidas no passado e usa a média do que aconteceu depois."},
+            "descricao": "Procura os K chamados mais parecidos e usa a média de dias deles."},
     "Random Forest": {"classe": RandomForestRegressor, "parametros": [ARVORES, PROFUNDIDADE, FOLHA],
                       "descricao": "Várias árvores de decisão votam juntas. Costuma ser mais preciso que uma árvore só."},
     "Gradient Boosting": {"classe": GradientBoostingRegressor, "parametros": [
