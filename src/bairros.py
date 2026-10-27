@@ -18,6 +18,13 @@ APELIDOS = {
     "CIC": "CIDADE INDUSTRIAL DE CURITIBA",
 }
 
+# O mapa do IPPUC é anterior à última reorganização das regionais. Nestes bairros vale a
+# regional usada hoje pela prefeitura (conferido nos chamados do 156: 99,9% dos casos).
+CORRECOES_REGIONAL = {
+    "TARUMA": "CAJURU",
+    "CAMPO COMPRIDO": "PORTÃO",
+}
+
 _PALAVRAS_MINUSCULAS = {"de", "da", "do", "das", "dos", "e"}
 
 
@@ -65,10 +72,17 @@ def tabela_bairros() -> pd.DataFrame:
     linhas = []
     for bairro in carregar_geojson()["features"]:
         p = bairro["properties"]
-        linhas.append({
-            "chave": p["chave"],
-            "bairro": nome_proprio(p["nome"]),
-            "regional": nome_proprio(p["nome_regional"].replace("REGIONAL ", "")),
-        })
+        regional = CORRECOES_REGIONAL.get(p["chave"], p["nome_regional"].replace("REGIONAL ", ""))
+        linhas.append({"chave": p["chave"], "bairro": nome_proprio(p["nome"]), "regional": nome_proprio(regional)})
     return pd.DataFrame(linhas).sort_values("bairro").reset_index(drop=True)
+
+
+@lru_cache(maxsize=1)
+def regional_por_bairro() -> dict:
+    """{chave do bairro: regional no formato do 156 (sem acento)}, ex.: 'Unidade Regional Portao'.
+
+    Usado para preencher a coluna Regional quando o arquivo enviado não a traz.
+    """
+    return {linha.chave: f"Unidade Regional {nome_proprio(normalizar_texto(linha.regional))}"
+            for linha in tabela_bairros().itertuples()}
 

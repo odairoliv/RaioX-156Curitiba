@@ -7,7 +7,7 @@ linhas foram descartadas e por quê.
 """
 import pandas as pd
 
-from src.bairros import chave_bairro, nome_proprio, normalizar_texto, tabela_bairros
+from src.bairros import chave_bairro, nome_proprio, normalizar_texto, regional_por_bairro, tabela_bairros
 
 SITUACOES_PENDENTES = {"ABERTO", "EM ANDAMENTO", "EM AVALIACAO", "FALTA DE DADOS"}
 # Só estes tipos pedem uma ação da prefeitura (elogios, sugestões e informações ficam de fora)
@@ -43,7 +43,12 @@ def preparar_156(bruto: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df["chave"] = _mapear(df["Bairro"], chave_bairro)
     validos = df["chave"].isin(set(tabela_bairros()["chave"]))
     relatorio["bairro_desconhecido"] = int((~validos).sum())
-    df = df[validos]
+    df = df[validos].copy()
+
+    # Regional vazia: deduzida pelo bairro (divisão oficial das regionais)
+    sem_regional = df["Regional"].astype(str).str.strip().eq("")
+    df.loc[sem_regional, "Regional"] = df.loc[sem_regional, "chave"].map(regional_por_bairro())
+    relatorio["regional_deduzida"] = int(sem_regional.sum())
 
     # 3. Colunas calculadas
     df["dias_resposta"] = (df["data_resposta"] - df["data"]).dt.days

@@ -84,6 +84,12 @@ chamado. Colunas usadas:
 | `Origem` | H4 (canal) |
 | `Situacao` | Chamados ainda abertos |
 
+**Colunas obrigatórias:** `DataCriacao`, `DataResposta`, `Assunto`, `Bairro`, `Situacao`, `Orgao`, `Tipo`, `Origem`
+— sem qualquer uma delas o arquivo é recusado (a base atual não muda). **Opcionais:** `Subdivisao`, `Regional`,
+`Logradouro` — se faltarem ou vierem vazias, o app explica o efeito e pergunta se o usuário quer **prosseguir ou
+cancelar**; a `Regional` faltante é preenchida pelo bairro (divisão oficial, com correção de 2 bairros em que o mapa
+do IPPUC está desatualizado). Colunas a mais são ignoradas e a ordem não importa.
+
 **Base analisada:** solicitações, reclamações e denúncias abertas há pelo menos 30 dias (as mais recentes ainda não
 tiveram tempo de atrasar). Na base padrão são 515 mil chamados, dos quais 25,9% atrasaram.
 

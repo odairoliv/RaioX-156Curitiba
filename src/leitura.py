@@ -16,8 +16,17 @@ from src.bairros import normalizar_texto
 
 # Colunas sem as quais a análise não funciona
 COLUNAS_OBRIGATORIAS = ["DataCriacao", "DataResposta", "Assunto", "Bairro", "Situacao", "Orgao", "Tipo", "Origem"]
-# Colunas usadas se existirem (se faltarem, ficam vazias)
+# Colunas usadas se existirem. Se faltarem (ou vierem vazias) o arquivo ainda pode ser usado,
+# mas o usuário é avisado do efeito e decide se continua.
 COLUNAS_OPCIONAIS = ["Subdivisao", "Regional", "Logradouro"]
+EFEITO_SEM_COLUNA = {
+    "Subdivisao": "Sem o **detalhe do assunto** (ex.: \"lâmpada apagada\" dentro de \"Iluminação Pública\"), os "
+                  "modelos perdem a informação que mais ajuda a prever o atraso: as previsões ficam menos precisas e "
+                  "o campo *Detalhe* do simulador fica sem efeito para esses chamados.",
+    "Regional": "A **regional** será preenchida automaticamente a partir do bairro, usando a divisão oficial da "
+                "prefeitura. Nada se perde.",
+    "Logradouro": "A **rua** não é usada nas análises nem nos modelos. Nada se perde.",
+}
 
 FORMATOS_ACEITOS = ["csv", "json", "xml", "gz"]
 
@@ -97,7 +106,11 @@ def ler_156(nome_arquivo: str, conteudo: bytes) -> pd.DataFrame:
             f"O arquivo não parece ser da Central 156. Faltam as colunas: {', '.join(faltando)}. "
             f"Colunas encontradas: {', '.join(map(str, df.columns[:12]))}."
         )
+    # Opcional "faltando" = não existe ou está totalmente vazia
+    faltando = [c for c in COLUNAS_OPCIONAIS
+                if c not in df.columns or df[c].astype(str).str.strip().eq("").all()]
     for coluna in COLUNAS_OPCIONAIS:
         if coluna not in df.columns:
             df[coluna] = ""
+    df.attrs["opcionais_faltando"] = faltando
     return df

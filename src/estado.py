@@ -68,9 +68,21 @@ def periodo_chamados() -> tuple[pd.Timestamp, pd.Timestamp]:
     return ss.chamados["data"].min(), ss.chamados["data"].max()
 
 
-def registrar_upload(nome_arquivo: str, conteudo: bytes, adicionar_ao_periodo: bool) -> dict:
-    """Lê, valida e prepara um arquivo enviado. Devolve um resumo para mostrar na tela."""
-    limpo, relatorio = preparar_156(ler_156(nome_arquivo, conteudo))
+def analisar_upload(nome_arquivo: str, conteudo: bytes) -> dict:
+    """Passo 1 do upload: lê e confere o arquivo SEM mexer na base atual.
+
+    Devolve {"arquivo", "bruto", "faltando"}. "faltando" lista as colunas opcionais ausentes
+    ou vazias — a tela mostra o efeito de cada uma e o usuário decide se continua.
+    Erros graves (formato inválido, coluna obrigatória faltando) levantam ErroDeArquivo.
+    """
+    bruto = ler_156(nome_arquivo, conteudo)
+    return {"arquivo": nome_arquivo, "bruto": bruto, "faltando": bruto.attrs.get("opcionais_faltando", [])}
+
+
+def aplicar_upload(analisado: dict, adicionar_ao_periodo: bool) -> dict:
+    """Passo 2 do upload: limpa o arquivo já analisado e o junta (ou troca) com a base atual."""
+    nome_arquivo = analisado["arquivo"]
+    limpo, relatorio = preparar_156(analisado["bruto"])
     if limpo.empty:
         raise ValueError("Nenhuma linha válida depois da limpeza (verifique as datas e os nomes de bairro).")
     if adicionar_ao_periodo:
@@ -81,9 +93,15 @@ def registrar_upload(nome_arquivo: str, conteudo: bytes, adicionar_ao_periodo: b
         ss.origem = f"Arquivo enviado: {nome_arquivo}"
     ss.relatorio = relatorio
     ss.versao_dados = _nova_versao()
-    resumo = {"arquivo": nome_arquivo, "enviado_em": datetime.now().strftime("%d/%m/%Y %H:%M"), **relatorio}
+    resumo = {"arquivo": nome_arquivo, "enviado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
+              "colunas_faltando": ", ".join(analisado["faltando"]) or "—", **relatorio}
     ss.historico_uploads.append(resumo)
     return resumo
+
+
+def registrar_upload(nome_arquivo: str, conteudo: bytes, adicionar_ao_periodo: bool) -> dict:
+    """Atalho: analisa e aplica direto, sem perguntar nada (usado nos testes)."""
+    return aplicar_upload(analisar_upload(nome_arquivo, conteudo), adicionar_ao_periodo)
 
 
 def restaurar_padrao() -> None:
