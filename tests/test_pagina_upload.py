@@ -51,3 +51,15 @@ def test_prosseguir_carrega_o_arquivo_mesmo_sem_as_opcionais():
     assert "uploads_pendentes" not in app.session_state
     assert len(app.session_state["chamados"]) == linhas_antes + 1
     assert any("Regional preenchida pelo bairro" in s.value for s in app.success)
+    # A análise exploratória passa a considerar o arquivo novo
+    assert [r["arquivo"] for r in app.session_state["relatorios_arquivos"]][-1] == "sem_opcionais.csv"
+    assert not app.exception
+
+
+def test_pagina_mostra_a_analise_exploratoria():
+    app = AppTest.from_function(_pagina, default_timeout=120)
+    app.run()
+    assert not app.exception
+    assert any("Análise exploratória" in h.value for h in app.header)
+    assert [t.label for t in app.tabs][:5] == ["Visão geral", "Completude das colunas", "Distribuições",
+                                               "Problemas encontrados", "Por arquivo"]

@@ -52,7 +52,7 @@ Testes automáticos: `pytest` (cerca de 1 minuto).
 | Página | O que faz |
 |---|---|
 | **Início** | A pergunta, as hipóteses e os números gerais |
-| **Enviar dados** | Upload de .csv/.json/.xml; o arquivo pode **somar-se** à base (o período dele substitui o mesmo período) ou **substituí-la**; opção de re-treinar os modelos automaticamente |
+| **Enviar dados** | Upload de .csv/.json/.xml; o arquivo pode **somar-se** à base (o período dele substitui o mesmo período) ou **substituí-la**; opção de re-treinar os modelos automaticamente; **análise exploratória dos dados** (visão geral, completude das colunas, distribuições e estatísticas descritivas, problemas encontrados na limpeza e qualidade por arquivo), recalculada a cada upload |
 | **Análise das hipóteses** | Mapa de % de atraso por bairro, gráficos por regional, órgão, tipo e canal, comparação justa e a conclusão de cada hipótese |
 | **Previsão** | *Vai atrasar?* (classificação) e *Quantos dias?* (regressão): escolha do algoritmo, ajuste de parâmetros, escolha das características, treino/re-treino, métricas explicadas e simulador de chamado |
 | **Sobre os dados** | O que é a base, o significado das colunas, definições, limitações e qualidade dos dados |
@@ -149,6 +149,7 @@ Se os ajustados continuam diferentes, a região importa mesmo descontando o tipo
 │   ├── preparacao.py         # limpeza com pandas
 │   ├── bairros.py            # nomes dos bairros e GeoJSON
 │   ├── analise.py            # cálculos das hipóteses (inclui a comparação justa)
+│   ├── exploratoria.py       # análise exploratória e qualidade dos dados
 │   ├── graficos.py           # gráficos Plotly
 │   ├── componentes.py        # pedaços de interface reutilizados
 │   ├── estado.py             # dados e modelos da sessão

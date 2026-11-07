@@ -3,8 +3,9 @@ import pandas as pd
 import streamlit as st
 
 from src import estado
-from src.componentes import data_br, num, status_dados_na_barra_lateral
-from src.config import PASTA_EXEMPLOS
+from src import graficos as g
+from src.componentes import data_br, num, pct, status_dados_na_barra_lateral
+from src.config import PASTA_EXEMPLOS, PRAZO_ATRASO_DIAS
 from src.leitura import COLUNAS_OBRIGATORIAS, COLUNAS_OPCIONAIS, EFEITO_SEM_COLUNA, FORMATOS_ACEITOS, ErroDeArquivo
 from src.treino import retreinar_modelos_existentes
 
@@ -113,6 +114,126 @@ st.caption(f"Origem: {ss.origem}")
 if st.button("Restaurar a base padrão"):
     estado.restaurar_padrao()
     st.rerun()
+
+# ======================================================================
+st.header("📊 Análise exploratória dos dados")
+st.markdown("Um raio-x da base **antes** de qualquer análise ou modelo: o que tem nela, o quanto está completa, como "
+            "os valores se distribuem e que problemas a limpeza encontrou. **É recalculada sempre que um arquivo "
+            "novo é enviado.**")
+eda = estado.exploratoria()
+geral, dias, problemas = eda["geral"], eda["dias"], eda["problemas"]
+relatorios = estado.relatorios_arquivos()
+total_lido = int(relatorios["linhas_lidas"].sum())
+soma = lambda campo: int(relatorios[campo].sum()) if campo in relatorios else 0  # noqa: E731
+
+aba_geral, aba_completude, aba_distribuicoes, aba_problemas, aba_arquivos = st.tabs(
+    ["Visão geral", "Completude das colunas", "Distribuições", "Problemas encontrados", "Por arquivo"])
+
+with aba_geral:
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Linhas lidas dos arquivos", num(total_lido))
+    g2.metric("Chamados válidos", num(geral["chamados"]),
+              f"{pct(geral['chamados'] / total_lido * 100) if total_lido else '—'} aproveitados", delta_color="off")
+    g3.metric("Período coberto", f"{num(geral['dias_cobertos'])} dias",
+              help=f"De {data_br(geral['inicio'])} a {data_br(geral['fim'])}.")
+    g4.metric("Já respondidos", pct(geral["respondidos_pct"]))
+    g5, g6, g7, g8 = st.columns(4)
+    g5.metric("Bairros", num(geral["bairros"]), help="De 75 bairros oficiais.")
+    g6.metric("Assuntos diferentes", num(geral["assuntos"]))
+    g7.metric("Órgãos diferentes", num(geral["orgaos"]))
+    g8.metric("Possíveis linhas repetidas", num(problemas["possiveis_duplicadas"]),
+              help="Linhas idênticas em todas as colunas. Veja a aba 'Problemas encontrados'.")
+    st.plotly_chart(g.colunas_por_mes(eda["por_mes"], "Chamados por mês de abertura"), width="stretch")
+    st.caption("Serve para conferir se algum mês veio incompleto ou com quantidade muito diferente dos outros — por "
+               "exemplo, um arquivo que cobre só parte do mês.")
+
+with aba_completude:
+    st.markdown("Para cada coluna: quanto dela está **preenchido**, quantos **valores diferentes** aparecem e o "
+                "**valor mais comum**. Uma coluna muito vazia enfraquece as análises que dependem dela.")
+    st.dataframe(eda["completude"], hide_index=True, width="stretch", column_config={
+        "Preenchido (%)": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
+        "Vazios": st.column_config.NumberColumn(format="%d"),
+        "Valores diferentes": st.column_config.NumberColumn(format="%d")})
+    vazios_resposta = eda["completude"].set_index("Coluna").loc["Data da resposta", "Vazios"]
+    st.caption(f"A única coluna com muitos vazios é a *Data da resposta* ({num(vazios_resposta)} chamados): isso é "
+               "esperado, pois são chamados que ainda não foram respondidos.")
+
+with aba_distribuicoes:
+    if dias.get("quantidade"):
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Mediana", f"{num(dias['mediana'])} dias", help="Metade dos chamados é respondida em até isso.")
+        d2.metric("Média", f"{num(dias['media'], 1)} dias", help="Puxada para cima pelos poucos chamados muito demorados.")
+        d3.metric("Metade central", f"{num(dias['q1'])} a {num(dias['q3'])} dias",
+                  help="Entre o 1º e o 3º quartil: onde ficam 50% dos chamados.")
+        d4.metric("Maior prazo", f"{num(dias['maximo'])} dias")
+        st.plotly_chart(g.histograma_dias(eda["dias_valores"], dias["mediana"], dias["media"]), width="stretch")
+        st.markdown(
+            f"**Como ler:** a maioria dos chamados é respondida rápido (metade em até {num(dias['mediana'])} dias), "
+            f"mas existe uma \"cauda\" longa de chamados demorados — por isso a média ({num(dias['media'], 1)} dias) "
+            f"fica bem acima da mediana. Pela regra do boxplot, respostas acima de **{num(dias['limite_extremo'])} "
+            f"dias** são valores atípicos: são **{num(dias['extremos'])} chamados** "
+            f"({pct(dias['extremos'] / dias['quantidade'] * 100)} dos respondidos). Eles foram **mantidos**, porque "
+            "são atrasos reais — justamente o que o trabalho estuda."
+        )
+        with st.expander("Estatísticas descritivas completas (dias até a resposta)"):
+            st.dataframe(pd.DataFrame({
+                "Estatística": ["Chamados respondidos", "Média", "Desvio padrão", "Mínimo", "1º quartil (25%)",
+                                "Mediana (50%)", "3º quartil (75%)", "Máximo"],
+                "Valor": [num(dias["quantidade"]), num(dias["media"], 1), num(dias["desvio"], 1), num(dias["minimo"]),
+                          num(dias["q1"]), num(dias["mediana"]), num(dias["q3"]), num(dias["maximo"])],
+            }), hide_index=True)
+    e1, e2 = st.columns(2)
+    e1.plotly_chart(g.barras_simples(eda["por_tipo"], "Chamados por tipo", formato=",.0f"), width="stretch")
+    e2.plotly_chart(g.barras_simples(eda["por_situacao"], "Chamados por situação", formato=",.0f"), width="stretch")
+    e3, e4 = st.columns(2)
+    e3.plotly_chart(g.barras_simples(eda["top_assuntos"], "Os 10 assuntos mais pedidos", formato=",.0f"), width="stretch")
+    e4.plotly_chart(g.barras_simples(eda["top_bairros"], "Os 10 bairros com mais chamados", formato=",.0f"),
+                    width="stretch")
+    st.plotly_chart(g.barras_simples(eda["por_canal"], "Chamados por canal", formato=",.0f"), width="stretch")
+    tipos_fora = int(eda["por_tipo"].drop(["Solicitação", "Reclamação", "Denúncia"], errors="ignore").sum())
+    st.caption(f"Elogios, sugestões, informações e recadastros ({num(tipos_fora)} chamados) aparecem aqui, mas ficam "
+               "fora da análise de atraso, porque não pedem uma ação da prefeitura.")
+
+with aba_problemas:
+    st.markdown("O que a limpeza encontrou e **o que foi feito** com cada caso. A soma considera todos os arquivos que "
+                "formam a base atual.")
+    linhas = [
+        ("Sem data de abertura válida", soma("sem_data"), "Descartados (não dá para saber quando foram abertos)."),
+        ("Bairro fora dos 75 oficiais ou vazio", soma("bairro_desconhecido"),
+         "Descartados (não dá para colocar no mapa nem comparar regiões)."),
+        ("Data de resposta ilegível", soma("data_resposta_invalida"), "Tratados como \"ainda sem resposta\"."),
+        ("Resposta registrada antes da abertura", soma("resposta_antes_abertura"),
+         "Erro de cadastro: a data de resposta é ignorada."),
+        ("Regional vazia", soma("regional_deduzida"), "Preenchida a partir do bairro."),
+        ("\"Concluído\" sem data de resposta", problemas["concluido_sem_data_resposta"],
+         "Mantidos na base, mas ficam fora da análise de atraso (não se sabe quando foram resolvidos)."),
+        ("Linhas idênticas (possíveis repetidas)", problemas["possiveis_duplicadas"],
+         "Mantidas: sem número de protocolo não dá para saber se são repetições ou pedidos iguais de verdade."),
+        ("Resposta depois de mais de 180 dias", problemas["prazos_muito_longos"],
+         "Mantidos: são atrasos reais, que o trabalho estuda."),
+        (f"Abertos há menos de {PRAZO_ATRASO_DIAS} dias", problemas["recentes"],
+         "Mantidos na base, mas ainda não entram na análise de atraso (não tiveram tempo de atrasar)."),
+        (f"Ainda abertos há mais de {PRAZO_ATRASO_DIAS} dias", problemas["pendentes_antigos"],
+         "Contam como atrasados nas análises."),
+    ]
+    tabela_problemas = pd.DataFrame(linhas, columns=["Situação", "Chamados", "O que foi feito"])
+    tabela_problemas["% da base"] = tabela_problemas["Chamados"] / max(total_lido, 1) * 100
+    st.dataframe(tabela_problemas[["Situação", "Chamados", "% da base", "O que foi feito"]], hide_index=True,
+                 width="stretch", column_config={"Chamados": st.column_config.NumberColumn(format="%d"),
+                                                 "% da base": st.column_config.NumberColumn(format="%.2f%%")})
+
+with aba_arquivos:
+    st.markdown("Qualidade de cada arquivo que forma a base atual. Ao **substituir** a base, a lista recomeça.")
+    colunas_relatorio = {"arquivo": "Arquivo", "linhas_lidas": "Lidas", "linhas_validas": "Válidas",
+                         "sem_data": "Sem data", "bairro_desconhecido": "Bairro fora dos 75",
+                         "data_resposta_invalida": "Resposta ilegível",
+                         "resposta_antes_abertura": "Resposta antes da abertura",
+                         "regional_deduzida": "Regional preenchida"}
+    tabela_arquivos = relatorios[[c for c in colunas_relatorio if c in relatorios]].rename(columns=colunas_relatorio)
+    tabela_arquivos["Aproveitamento"] = tabela_arquivos["Válidas"] / tabela_arquivos["Lidas"] * 100
+    st.dataframe(tabela_arquivos, hide_index=True, width="stretch",
+                 column_config={"Aproveitamento": st.column_config.ProgressColumn(format="%.1f%%", min_value=0,
+                                                                                  max_value=100)})
 
 if ss.historico_uploads:
     st.subheader("Arquivos enviados nesta sessão")

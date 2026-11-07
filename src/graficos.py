@@ -122,6 +122,32 @@ def matriz_confusao(matriz) -> go.Figure:
     return _ajustar(fig, altura=340)
 
 
+def colunas_por_mes(contagem: pd.Series, titulo: str) -> go.Figure:
+    """Colunas com a quantidade de chamados em cada mês (índice = primeiro dia do mês)."""
+    fig = go.Figure(go.Bar(
+        x=contagem.index, y=contagem.values, marker_color=AZUL,
+        text=[f"{v / 1000:.1f} mil".replace(".", ",") for v in contagem.values], textposition="outside",
+        cliponaxis=False, hovertemplate="%{x|%m/%Y}: %{y:,} chamados<extra></extra>",
+    ))
+    fig.update_layout(title=titulo, yaxis_title="Chamados", xaxis_title=None, xaxis_tickformat="%m/%Y")
+    return _ajustar(fig, altura=340)
+
+
+def histograma_dias(dias: pd.Series, mediana: float, media: float, limite: int = 120) -> go.Figure:
+    """Distribuição dos dias até a resposta, com linhas da mediana e da média."""
+    fig = go.Figure(go.Histogram(
+        x=dias.clip(upper=limite), xbins=dict(start=0, end=limite + 1, size=1), marker_color=AZUL,
+        hovertemplate="%{x:.0f} dias: %{y:,} chamados<extra></extra>",
+    ))
+    fig.add_vline(x=mediana, line_dash="dot", line_color=LARANJA, annotation_text=f"mediana: {mediana:.0f} dias",
+                  annotation_position="top right")
+    fig.add_vline(x=media, line_dash="dot", line_color=CINZA, annotation_text=f"média: {media:.0f} dias",
+                  annotation_position="bottom right")
+    fig.update_layout(title=f"Quantos dias até a resposta (respostas acima de {limite} dias somadas na última barra)",
+                      xaxis_title="Dias até a resposta", yaxis_title="Chamados", bargap=0.05)
+    return _ajustar(fig, altura=360)
+
+
 def curva_limiar(y_real, chance, limiar: float) -> go.Figure:
     """Como os atrasos encontrados (recall) e os alertas certos (precisão) mudam com o limiar."""
     limiares = [i / 100 for i in range(5, 96, 5)]

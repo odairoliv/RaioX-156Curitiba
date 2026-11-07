@@ -13,6 +13,7 @@ import streamlit as st
 
 from src.analise import montar_base
 from src.config import BASE_PADRAO, PASTA_CACHE
+from src.exploratoria import analise_exploratoria
 from src.leitura import ler_156
 from src.modelos.registro import ResultadoTreino
 from src.preparacao import juntar_156, preparar_156
@@ -50,6 +51,8 @@ def iniciar() -> None:
         return
     ss.chamados, ss.relatorio = _carregar_base_padrao()
     ss.origem = f"Base padrão do projeto ({BASE_PADRAO.name})"
+    # Relatório de qualidade de cada arquivo que compõe a base atual (usado na análise exploratória)
+    ss.relatorios_arquivos = [{"arquivo": f"{BASE_PADRAO.name} (base padrão)", **ss.relatorio}]
     ss.versao_dados = _nova_versao()
     ss.modelos = {}             # "classificacao" / "regressao" -> ResultadoTreino
     ss.historico_uploads = []
@@ -88,9 +91,11 @@ def aplicar_upload(analisado: dict, adicionar_ao_periodo: bool) -> dict:
     if adicionar_ao_periodo:
         ss.chamados = juntar_156(ss.chamados, limpo)
         ss.origem += f" + {nome_arquivo}"
+        ss.relatorios_arquivos.append({"arquivo": nome_arquivo, **relatorio})
     else:
         ss.chamados = limpo
         ss.origem = f"Arquivo enviado: {nome_arquivo}"
+        ss.relatorios_arquivos = [{"arquivo": nome_arquivo, **relatorio}]
     ss.relatorio = relatorio
     ss.versao_dados = _nova_versao()
     resumo = {"arquivo": nome_arquivo, "enviado_em": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -109,6 +114,21 @@ def restaurar_padrao() -> None:
     ss.pop("chamados", None)
     iniciar()
     ss.modelos, ss.historico_uploads = modelos, historico
+
+
+def relatorios_arquivos() -> pd.DataFrame:
+    """Um relatório de qualidade por arquivo que compõe a base atual."""
+    return pd.DataFrame(ss.relatorios_arquivos)
+
+
+@st.cache_data(show_spinner="Calculando a análise exploratória...", max_entries=3)
+def _exploratoria(versao: str, _chamados) -> dict:
+    return analise_exploratoria(_chamados)
+
+
+def exploratoria() -> dict:
+    """Análise exploratória da base atual (recalculada a cada upload)."""
+    return _exploratoria(ss.versao_dados, ss.chamados)
 
 
 @st.cache_data(show_spinner="Preparando a base de análise...", max_entries=3)

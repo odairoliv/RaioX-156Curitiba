@@ -51,8 +51,13 @@ def preparar_156(bruto: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     relatorio["regional_deduzida"] = int(sem_regional.sum())
 
     # 3. Colunas calculadas
+    # DataResposta preenchida mas que não virou data (texto inválido): fica como "sem resposta"
+    invalida = df["data_resposta"].isna() & df["DataResposta"].astype(str).str.strip().ne("")
+    relatorio["data_resposta_invalida"] = int(invalida.sum())
     df["dias_resposta"] = (df["data_resposta"] - df["data"]).dt.days
-    df.loc[df["dias_resposta"] < 0, "dias_resposta"] = pd.NA  # resposta antes da abertura = erro de cadastro
+    resposta_antes = df["dias_resposta"] < 0  # resposta antes da abertura = erro de cadastro
+    relatorio["resposta_antes_abertura"] = int(resposta_antes.sum())
+    df.loc[resposta_antes, ["dias_resposta", "data_resposta"]] = pd.NA
     df["pendente"] = _mapear(df["Situacao"], normalizar_texto).isin(SITUACOES_PENDENTES)
     df["mes"] = df["data"].dt.to_period("M").dt.start_time
     df["Logradouro"] = _mapear(df["Logradouro"], lambda s: nome_proprio(normalizar_texto(s)))
