@@ -4,6 +4,8 @@ Responde, antes de qualquer modelo: o que tem na base, o quanto ela está comple
 como os valores se distribuem e que problemas a limpeza encontrou. É recalculada
 toda vez que um arquivo novo é enviado.
 """
+import math
+
 import pandas as pd
 
 from src.bairros import tabela_bairros
@@ -25,6 +27,17 @@ COLUNAS_DESCRITAS = {
     "Regional": ("Regional", "Não acontece: quando falta, é preenchida pelo bairro."),
     "Logradouro": ("Rua", "Rua não informada (não é usada nas análises)."),
 }
+
+
+def taxa_aproveitamento(validas, lidas) -> float:
+    """% de linhas aproveitadas, arredondada PARA BAIXO com 2 casas decimais.
+
+    Arredondar para baixo garante que só aparece 100% quando nada foi descartado
+    (ex.: 585.610 de 585.696 = 99,985% -> 99,98%, e não "100,0%").
+    """
+    if not lidas:
+        return 0.0
+    return math.floor(validas / lidas * 100 * 100) / 100
 
 
 def _vazios(coluna: pd.Series) -> pd.Series:

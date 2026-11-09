@@ -6,6 +6,7 @@ from src import estado
 from src import graficos as g
 from src.componentes import data_br, num, pct, status_dados_na_barra_lateral
 from src.config import PASTA_EXEMPLOS, PRAZO_ATRASO_DIAS
+from src.exploratoria import taxa_aproveitamento
 from src.leitura import COLUNAS_OBRIGATORIAS, COLUNAS_OPCIONAIS, EFEITO_SEM_COLUNA, FORMATOS_ACEITOS, ErroDeArquivo
 from src.treino import retreinar_modelos_existentes
 
@@ -133,7 +134,8 @@ with aba_geral:
     g1, g2, g3, g4 = st.columns(4)
     g1.metric("Linhas lidas dos arquivos", num(total_lido))
     g2.metric("Chamados válidos", num(geral["chamados"]),
-              f"{pct(geral['chamados'] / total_lido * 100) if total_lido else '—'} aproveitados", delta_color="off")
+              f"{pct(taxa_aproveitamento(geral['chamados'], total_lido), 2)} aproveitados "
+              f"({num(total_lido - geral['chamados'])} descartados)", delta_color="off")
     g3.metric("Período coberto", f"{num(geral['dias_cobertos'])} dias",
               help=f"De {data_br(geral['inicio'])} a {data_br(geral['fim'])}.")
     g4.metric("Já respondidos", pct(geral["respondidos_pct"]))
@@ -230,10 +232,15 @@ with aba_arquivos:
                          "resposta_antes_abertura": "Resposta antes da abertura",
                          "regional_deduzida": "Regional preenchida"}
     tabela_arquivos = relatorios[[c for c in colunas_relatorio if c in relatorios]].rename(columns=colunas_relatorio)
-    tabela_arquivos["Aproveitamento"] = tabela_arquivos["Válidas"] / tabela_arquivos["Lidas"] * 100
+    tabela_arquivos.insert(3, "Descartadas", tabela_arquivos["Lidas"] - tabela_arquivos["Válidas"])
+    tabela_arquivos["Aproveitamento"] = [taxa_aproveitamento(v, lidas) for v, lidas
+                                         in zip(tabela_arquivos["Válidas"], tabela_arquivos["Lidas"])]
     st.dataframe(tabela_arquivos, hide_index=True, width="stretch",
-                 column_config={"Aproveitamento": st.column_config.ProgressColumn(format="%.1f%%", min_value=0,
+                 column_config={"Aproveitamento": st.column_config.ProgressColumn(format="%.2f%%", min_value=0,
                                                                                   max_value=100)})
+    st.caption("**Aproveitamento** = linhas válidas ÷ linhas lidas, arredondado para baixo com 2 casas decimais: só "
+               "aparece 100% quando nenhuma linha foi descartada. **Descartadas** = sem data de abertura válida + "
+               "bairro fora dos 75 oficiais.")
 
 if ss.historico_uploads:
     st.subheader("Arquivos enviados nesta sessão")

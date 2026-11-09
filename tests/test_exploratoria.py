@@ -1,7 +1,8 @@
 """Análise exploratória e qualidade dos dados."""
 import pandas as pd
 
-from src.exploratoria import analise_exploratoria, completude, estatisticas_dias, problemas_na_base
+from src.exploratoria import (analise_exploratoria, completude, estatisticas_dias, problemas_na_base,
+                              taxa_aproveitamento)
 from src.leitura import ler_156
 from src.preparacao import preparar_156
 
@@ -56,3 +57,10 @@ def test_analise_completa_na_base_real(chamados):
     assert eda["por_mes"].sum() == len(chamados)
     assert len(eda["completude"]) == 11
     assert eda["dias"]["q1"] <= eda["dias"]["mediana"] <= eda["dias"]["q3"]
+
+
+def test_aproveitamento_so_mostra_100_quando_nada_foi_descartado():
+    assert taxa_aproveitamento(585_610, 585_696) == 99.98  # 99,985% não vira "100%"
+    assert taxa_aproveitamento(999_999, 1_000_000) < 100
+    assert taxa_aproveitamento(500, 500) == 100
+    assert taxa_aproveitamento(0, 0) == 0
